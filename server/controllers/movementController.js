@@ -4,7 +4,8 @@ const Stock = require("../models/Stock");
 const Product = require("../models/Product");
 const Warehouse = require("../models/Warehouse");
 const stockQueue = require("../queues/stockQueue");
-const redisClient = require("../config/redis");
+// Fix 1: Destructure the connection instance from the config module
+const { redisConnection: redisClient } = require("../config/redis");
 
 const clearStockCache = async () => {
   try {
@@ -159,26 +160,41 @@ const transferStock = async (req, res, next) => {
     targetStock.currentQuantity += qty;
     await targetStock.save();
 
-    const movementData = {
+    // Fix 2: Generate separate transfer_out and transfer_in movement documents
+    const transferOutData = {
       product,
       fromWarehouse,
+      warehouse: fromWarehouse,
+      type: "transfer_out",
+      quantity: qty,
+      reason: reason || "Inter-warehouse transfer",
+    };
+
+    const transferInData = {
+      product,
       toWarehouse,
-      type: "transfer",
+      warehouse: toWarehouse,
+      type: "transfer_in",
       quantity: qty,
       reason: reason || "Inter-warehouse transfer",
     };
 
     if (req.user?._id || req.user?.id) {
-      movementData.performedBy = req.user._id || req.user.id;
+      const userId = req.user._id || req.user.id;
+      transferOutData.performedBy = userId;
+      transferInData.performedBy = userId;
     }
 
-    const movement = await StockMovement.create(movementData);
+    const [transferOut, transferIn] = await Promise.all([
+      StockMovement.create(transferOutData),
+      StockMovement.create(transferInData),
+    ]);
 
     await clearStockCache();
 
     await checkAndTriggerLowStockAlert(product, fromWarehouse, sourceStock.currentQuantity);
 
-    res.status(201).json(movement);
+    res.status(201).json({ transferOut, transferIn });
   } catch (error) {
     next(error);
   }

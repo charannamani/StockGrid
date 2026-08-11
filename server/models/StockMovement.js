@@ -21,8 +21,15 @@ const stockMovementSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["inbound", "outbound", "transfer", "adjustment"],
       required: true,
+      enum: [
+        "inbound",
+        "outbound",
+        "transfer",
+        "transfer_out",
+        "transfer_in",
+        "adjustment",
+      ],
     },
     quantity: {
       type: Number,
