@@ -1,0 +1,74 @@
+name: StockGrid CI Pipeline
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  backend-tests:
+    name: Run Backend Test Suite
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20 environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "server/package-lock.json"
+
+      - name: Install system dependencies for MongoDB Memory Server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4 ca-certificates openssl
+
+      - name: Install backend dependencies
+        run: |
+          cd server
+          npm ci
+
+      - name: Execute Jest tests
+        env:
+          JWT_SECRET: ci_test_jwt_secret_999
+          NODE_ENV: test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+        run: |
+          cd server
+          npm test
+
+  frontend-build:
+    name: Verify Frontend Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20 environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "client/package-lock.json"
+
+      - name: Install frontend dependencies
+        run: |
+          cd client
+          npm ci
+
+      - name: Build client production bundle
+        run: |
+          cd client
+          npm run build
