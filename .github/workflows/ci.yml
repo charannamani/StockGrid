@@ -72,3 +72,22 @@ jobs:
         run: |
           cd client
           npm run build
+
+  deploy-ec2:
+    name: Continuous Deployment to AWS EC2
+    needs: [backend-tests, frontend-build]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: SSH and Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd StockGrid
+            git pull origin main
+            docker compose down
+            docker compose up -d --build
