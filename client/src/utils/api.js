@@ -1,7 +1,16 @@
 import axios from "axios";
 
+// Helper to prevent baked-in 'localhost' from overriding EC2 IP
+const getBaseURL = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && !envUrl.includes("localhost")) {
+    return envUrl;
+  }
+  return `http://${window.location.hostname}:5000/api`;
+};
+
 const API = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000/api`,
+  baseURL: getBaseURL(),
 });
 
 API.interceptors.request.use((config) => {
