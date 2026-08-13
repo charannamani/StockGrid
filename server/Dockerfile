@@ -1,17 +1,14 @@
-FROM node:20-slim
-
-RUN apt-get update && apt-get install -y libcurl4 ca-certificates openssl && rm -rf /var/lib/apt/lists/*
+FROM node:20-alpine
 
 WORKDIR /app
 
-ENV MONGOMS_DISABLE_POSTINSTALL=1
-
+# Copy package files first to cache layer
 COPY package*.json ./
 
-RUN npm config set maxsockets 5 && \
-    npm config set fetch-retries 5 && \
-    npm ci --ignore-scripts --no-audit --no-fund
+# Install dependencies (utilizes cache if package.json hasn't changed)
+RUN npm install
 
+# Copy the rest of backend source code
 COPY . .
 
 EXPOSE 5000

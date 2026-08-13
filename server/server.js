@@ -9,16 +9,8 @@ connectDB();
 
 const app = express();
 
-// Explicit CORS configuration for production & preflight requests
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
-app.options("*", cors());
-
+// Standard CORS handles GET, POST, PUT, DELETE, and OPTIONS preflights automatically
+app.use(cors());
 app.use(express.json());
 
 require("./workers/stockWorker");
@@ -61,7 +53,6 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-// Listen on 0.0.0.0 to accept incoming traffic routed by Docker
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
