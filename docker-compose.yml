@@ -7,7 +7,9 @@ services:
     restart: always
 
   server:
-    build: ./server
+    build:
+      context: ./server
+      target: development
     container_name: stockgrid-server
     ports:
       - "5000:5000"
@@ -25,7 +27,9 @@ services:
       - /app/node_modules
 
   client:
-    build: ./client
+    build:
+      context: ./client
+      target: development
     container_name: stockgrid-client
     ports:
       - "5173:5173"

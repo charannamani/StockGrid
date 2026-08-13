@@ -1,16 +1,16 @@
-FROM node:20-alpine
-
+FROM node:20-alpine AS base
 WORKDIR /app
-
-# Copy package files first to cache layer
 COPY package*.json ./
 
-# Install dependencies (utilizes cache if package.json hasn't changed)
+FROM base AS development
 RUN npm install
-
-# Copy the rest of backend source code
 COPY . .
-
 EXPOSE 5000
-
 CMD ["npm", "run", "dev"]
+
+FROM base AS production
+ENV NODE_ENV=production
+RUN npm ci --only=production
+COPY . .
+EXPOSE 5000
+CMD ["node", "server.js"]
