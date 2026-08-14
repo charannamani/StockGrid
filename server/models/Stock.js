@@ -26,7 +26,6 @@ const stockSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Ensures 1 unique record per product per warehouse + accelerates queries
 stockSchema.index({ product: 1, warehouse: 1 }, { unique: true });
 stockSchema.index({ warehouse: 1, currentQuantity: 1 });
 

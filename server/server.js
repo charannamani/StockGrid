@@ -9,7 +9,6 @@ connectDB();
 
 const app = express();
 
-// Standard CORS handles GET, POST, PUT, DELETE, and OPTIONS preflights automatically
 app.use(cors());
 app.use(express.json());
 
