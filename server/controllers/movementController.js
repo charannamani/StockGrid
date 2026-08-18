@@ -48,7 +48,9 @@ const checkAndTriggerLowStockAlert = async (productId, warehouseId, newQuantity)
 
 const createMovement = async (req, res, next) => {
   try {
-    const { product, warehouse, type, quantity, reason } = req.body;
+    const product = req.body.product || req.body.productId;
+    const warehouse = req.body.warehouse || req.body.warehouseId;
+    const { type, quantity, reason } = req.body;
 
     if (!product || !warehouse || !type || !quantity) {
       res.status(400);
