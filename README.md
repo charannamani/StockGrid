@@ -75,31 +75,6 @@ To eliminate external API rate limits and deliver sub-millisecond response times
 
 ---
 
-## Repository Structure
-
-```
-StockGrid/
-├── .github/
-│   └── workflows/
-│       └── deploy.yml          # Automated CI/CD deployment pipeline
-├── client/
-│   ├── src/                    # UI views, market components, charts & state hooks
-│   ├── Dockerfile              # Multi-stage React/Vite container setup
-│   └── package.json
-├── server/
-│   ├── src/
-│   │   ├── controllers/        # Request handling & cache invalidation logic
-│   │   ├── middleware/         # Auth verification & route guards
-│   │   ├── models/             # Schema definitions for users & trade ledgers
-│   │   └── routes/             # RESTful API route declarations
-│   ├── Dockerfile              # Production Node.js Alpine container setup
-│   └── package.json
-├── docker-compose.yml          # Service orchestration (Client, Server, Redis)
-└── README.md
-```
-
----
-
 ## Local Development Setup
 
 ### Prerequisites
