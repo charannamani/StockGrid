@@ -1,22 +1,39 @@
 
+const BASE_URL = process.env.BASE_URL || "http://localhost:5000/api";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const PRODUCT_ID = process.env.PRODUCT_ID;
+const WAREHOUSE_ID = process.env.WAREHOUSE_ID;
+const QTY = Number(process.env.QTY || 8);
 
-const TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNzhkMWVhZDhjNWI5NWQyM2RmODFjNyIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc4Nzg1MjgyMCwiZXhwIjoxNzg4NDU3NjIwfQ.htqQDM784T1kja4rKEku-l__sTtxO-vKjqgkkA5rAa8";
-const PRODUCT_ID = "6a9077518c7ea9eab9185b62";
-const WAREHOUSE_ID = "6a9076e18c7ea9eab9185b61";
-const BASE_URL = "http://localhost:5000/api";
+async function login() {
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    throw new Error("Set ADMIN_EMAIL and ADMIN_PASSWORD env vars to run this script.");
+  }
+  const res = await fetch(`${BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
+  });
+  const body = await res.json();
+  if (!res.ok || !body.token) {
+    throw new Error(`Login failed: HTTP ${res.status} ${JSON.stringify(body)}`);
+  }
+  return body.token;
+}
 
-async function fireOutbound(label) {
+async function fireOutbound(token, label) {
   const res = await fetch(`${BASE_URL}/movements`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${TOKEN}`,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       product: PRODUCT_ID,
       warehouse: WAREHOUSE_ID,
       type: "outbound",
-      quantity: 8,
+      quantity: QTY,
       reason: `race test ${label}`,
     }),
   });
@@ -25,11 +42,17 @@ async function fireOutbound(label) {
 }
 
 async function main() {
-  console.log("Firing two concurrent outbound requests of qty 8 each...\n");
+  if (!PRODUCT_ID || !WAREHOUSE_ID) {
+    throw new Error("Set PRODUCT_ID and WAREHOUSE_ID env vars to run this script.");
+  }
+
+  const token = await login();
+
+  console.log(`Firing two concurrent outbound requests of qty ${QTY} each...\n`);
 
   const [resultA, resultB] = await Promise.all([
-    fireOutbound("A"),
-    fireOutbound("B"),
+    fireOutbound(token, "A"),
+    fireOutbound(token, "B"),
   ]);
 
   for (const r of [resultA, resultB]) {
@@ -51,4 +74,7 @@ async function main() {
   }
 }
 
-main().catch((err) => console.error("Script error:", err));
+main().catch((err) => {
+  console.error("Script error:", err.message);
+  process.exit(1);
+});
