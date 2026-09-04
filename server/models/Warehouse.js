@@ -16,6 +16,16 @@ const warehouseSchema = new mongoose.Schema(
       type: Number,
       min: 0,
     },
+    latitude: {
+      type: Number,
+      min: -90,
+      max: 90,
+    },
+    longitude: {
+      type: Number,
+      min: -180,
+      max: 180,
+    },
     isActive: {
       type: Boolean,
       default: true,

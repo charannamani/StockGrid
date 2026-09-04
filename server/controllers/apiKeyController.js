@@ -2,7 +2,7 @@ const ApiKey = require("../models/ApiKey");
 
 const generateApiKey = async (req, res, next) => {
   try {
-    const { name } = req.body;
+    const { name, callbackUrl } = req.body;
 
     if (!name) {
       res.status(400);
@@ -15,16 +15,21 @@ const generateApiKey = async (req, res, next) => {
     const apiKey = await ApiKey.create({
       name,
       key: hashedKey,
+      callbackUrl: callbackUrl || undefined,
       createdBy: req.user._id,
     });
 
     res.status(201).json({
       _id: apiKey._id,
       name: apiKey.name,
+      callbackUrl: apiKey.callbackUrl || null,
       rawKey,
       message: "Save this key now — it will not be shown again",
     });
   } catch (error) {
+    if (error.name === "ValidationError") {
+      res.status(400);
+    }
     next(error);
   }
 };

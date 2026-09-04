@@ -1,4 +1,4 @@
-const redisClient = require("../config/redis");
+const { redisConnection: redisClient } = require("../config/redis");
 
 const cache = (keyPrefix, ttlSeconds = 300) => {
   return async (req, res, next) => {
@@ -13,13 +13,14 @@ const cache = (keyPrefix, ttlSeconds = 300) => {
       const originalJson = res.json.bind(res);
       res.json = (data) => {
         if (res.statusCode === 200) {
-          redisClient.setEx(key, ttlSeconds, JSON.stringify(data));
+          redisClient.setex(key, ttlSeconds, JSON.stringify(data));
         }
         return originalJson(data);
       };
 
       next();
     } catch (error) {
+      console.error("Cache middleware error:", error.message);
       next();
     }
   };

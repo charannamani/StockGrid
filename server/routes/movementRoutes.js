@@ -5,11 +5,11 @@ const {
   createMovement,
   transferStock,
 } = require("../controllers/movementController");
-const { protect } = require("../middleware/authMiddleware");
+const { protect, flexibleAuth } = require("../middleware/authMiddleware");
 
 // Routes
 router.get("/", protect, getMovementHistory);
-router.post("/", protect, createMovement);
+router.post("/", flexibleAuth, createMovement);
 router.post("/transfer", protect, transferStock);
 
 module.exports = router;

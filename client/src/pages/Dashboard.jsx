@@ -77,8 +77,7 @@ const Dashboard = () => {
           warehouseCount: warehouses.length,
           totalStock,
           lowStockCount,
-          movements: (movementsRes.data || []).slice(0, 6),
-          warehouseDistribution: distribution,
+          movements: (movementsRes.data.movements || []).slice(0, 6),          warehouseDistribution: distribution,
         });
       } catch (err) {
         toast.error("Couldn't load real-time dashboard data");

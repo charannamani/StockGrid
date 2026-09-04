@@ -1,19 +1,17 @@
 const Warehouse = require("../models/Warehouse");
 
-// Get all active warehouses
 const getWarehouses = async (req, res, next) => {
   try {
-    const warehouses = await Warehouse.find({ isActive: true }).lean(); // Optimization
+    const warehouses = await Warehouse.find({ isActive: true }).lean();
     res.json(warehouses);
   } catch (error) {
     next(error);
   }
 };
 
-// Get single warehouse by ID
 const getWarehouseById = async (req, res, next) => {
   try {
-    const warehouse = await Warehouse.findById(req.params.id).lean(); // Optimization
+    const warehouse = await Warehouse.findById(req.params.id).lean();
     if (!warehouse) {
       res.status(404);
       return next(new Error("Warehouse not found"));
@@ -24,21 +22,22 @@ const getWarehouseById = async (req, res, next) => {
   }
 };
 
-// Create a new warehouse facility (Admin only)
 const createWarehouse = async (req, res, next) => {
   try {
-    const { name, code, address } = req.body;
+    const { name, address, capacity, latitude, longitude } = req.body;
 
-    const existingWarehouse = await Warehouse.findOne({ code });
+    const existingWarehouse = await Warehouse.findOne({ name });
     if (existingWarehouse) {
       res.status(400);
-      return next(new Error("Warehouse with this code already exists"));
+      return next(new Error("Warehouse with this name already exists"));
     }
 
     const warehouse = await Warehouse.create({
       name,
-      code,
       address,
+      capacity,
+      latitude,
+      longitude,
     });
 
     res.status(201).json(warehouse);
@@ -47,10 +46,9 @@ const createWarehouse = async (req, res, next) => {
   }
 };
 
-// Update warehouse facility details (Admin only)
 const updateWarehouse = async (req, res, next) => {
   try {
-    const { name, address, isActive } = req.body;
+    const { name, address, capacity, latitude, longitude, isActive } = req.body;
 
     const warehouse = await Warehouse.findById(req.params.id);
     if (!warehouse) {
@@ -60,6 +58,9 @@ const updateWarehouse = async (req, res, next) => {
 
     if (name) warehouse.name = name;
     if (address !== undefined) warehouse.address = address;
+    if (capacity !== undefined) warehouse.capacity = capacity;
+    if (latitude !== undefined) warehouse.latitude = latitude;
+    if (longitude !== undefined) warehouse.longitude = longitude;
     if (isActive !== undefined) warehouse.isActive = isActive;
 
     const updatedWarehouse = await warehouse.save();
@@ -69,7 +70,6 @@ const updateWarehouse = async (req, res, next) => {
   }
 };
 
-// Delete / Deactivate a warehouse (Admin only)
 const deleteWarehouse = async (req, res, next) => {
   try {
     const warehouse = await Warehouse.findById(req.params.id);
@@ -78,7 +78,6 @@ const deleteWarehouse = async (req, res, next) => {
       return next(new Error("Warehouse not found"));
     }
 
-    // Soft delete: mark as inactive
     warehouse.isActive = false;
     await warehouse.save();
 

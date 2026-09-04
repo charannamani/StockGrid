@@ -4,6 +4,8 @@ dotenv.config();
 const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
+const { notFound, errorHandler } = require("./middleware/errorMiddleware");
+const { generalLimiter } = require("./middleware/rateLimiter");
 
 connectDB();
 
@@ -11,6 +13,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use(generalLimiter);
 
 require("./workers/stockWorker");
 
@@ -19,6 +22,7 @@ app.use("/api/users", require("./routes/authRoutes"));
 app.use("/api/products", require("./routes/productRoutes"));
 app.use("/api/warehouses", require("./routes/warehouseRoutes"));
 app.use("/api/movements", require("./routes/movementRoutes"));
+app.use("/api/apikeys", require("./routes/apiKeyRoutes"));
 
 app.use("/api/stocks", require("./routes/stockRoutes"));
 app.use("/api/stock", require("./routes/stockRoutes"));
@@ -35,20 +39,15 @@ createBullBoard({
   queues: [new BullMQAdapter(stockQueue)],
   serverAdapter: serverAdapter,
 });
-
+app.use("/api/webhooks", require("./routes/webhookRoutes"));
 app.use("/admin/queues", serverAdapter.getRouter());
 
 app.get("/", (req, res) => {
   res.send("StockGrid API Engine Running Smoothly...");
 });
 
-app.use((err, req, res, next) => {
-  const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
-  res.status(statusCode).json({
-    message: err.message,
-    stack: process.env.NODE_ENV === "production" ? null : err.stack,
-  });
-});
+app.use(notFound);
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 

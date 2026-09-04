@@ -2,6 +2,20 @@ const mongoose = require("mongoose");
 const Stock = require("../models/Stock");
 const Product = require("../models/Product");
 
+const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
 const getStockLevels = async (req, res, next) => {
   try {
     const { product, warehouse } = req.query;
@@ -16,7 +30,7 @@ const getStockLevels = async (req, res, next) => {
 
     const stock = await Stock.find(filter)
       .populate("product", "name sku category unitCost price lowStockThreshold")
-      .populate("warehouse", "name address location")
+      .populate("warehouse", "name address latitude longitude")
       .lean();
 
     const validStock = stock.filter((entry) => entry.product && entry.warehouse);
@@ -55,7 +69,7 @@ const getStockByProduct = async (req, res, next) => {
     }
 
     const stock = await Stock.find({ product: productId })
-      .populate("warehouse", "name address location")
+      .populate("warehouse", "name address latitude longitude")
       .lean();
 
     const validStock = stock.filter((entry) => entry.warehouse);
@@ -69,7 +83,7 @@ const getStockByProduct = async (req, res, next) => {
 
 const checkAvailability = async (req, res, next) => {
   try {
-    const { productId, quantity } = req.query;
+    const { productId, quantity, destLat, destLng } = req.query;
 
     if (!productId || !quantity || !mongoose.Types.ObjectId.isValid(productId)) {
       return res.json({
@@ -93,25 +107,75 @@ const checkAvailability = async (req, res, next) => {
     }
 
     const stockEntries = await Stock.find({ product: productId, currentQuantity: { $gt: 0 } })
-      .populate("warehouse", "name address location")
-      .sort({ currentQuantity: -1 })
+      .populate("warehouse", "name address latitude longitude")
       .lean();
 
-    const validEntries = stockEntries.filter((entry) => entry.warehouse);
+    let validEntries = stockEntries.filter((entry) => entry.warehouse);
 
-    const singleSource = validEntries.find((entry) => entry.currentQuantity >= requestedQty);
+    const hasDestination = destLat !== undefined && destLng !== undefined && destLat !== "" && destLng !== "";
+    const destLatNum = Number(destLat);
+    const destLngNum = Number(destLng);
 
-    if (singleSource) {
-      return res.json({
-        fulfillable: true,
-        strategy: "single_warehouse",
-        options: [
-          {
-            warehouse: singleSource.warehouse,
-            quantityAvailable: singleSource.currentQuantity,
-          },
-        ],
-      });
+    let usingCostOptimal = false;
+
+    if (hasDestination && !Number.isNaN(destLatNum) && !Number.isNaN(destLngNum)) {
+      const entriesWithCoords = validEntries.filter(
+        (entry) => entry.warehouse.latitude != null && entry.warehouse.longitude != null
+      );
+
+      if (entriesWithCoords.length > 0) {
+        usingCostOptimal = true;
+        validEntries = entriesWithCoords
+          .map((entry) => ({
+            ...entry,
+            distanceKm: Math.round(
+              haversineDistanceKm(
+                destLatNum,
+                destLngNum,
+                entry.warehouse.latitude,
+                entry.warehouse.longitude
+              ) * 10
+            ) / 10,
+          }))
+          .sort((a, b) => a.distanceKm - b.distanceKm);
+      }
+    }
+
+    if (!usingCostOptimal) {
+      validEntries = validEntries.sort((a, b) => b.currentQuantity - a.currentQuantity);
+    }
+
+    const strategy = usingCostOptimal ? "cost_optimal" : "quantity_greedy";
+
+    if (usingCostOptimal) {
+      const singleSource = validEntries.find((entry) => entry.currentQuantity >= requestedQty);
+      if (singleSource) {
+        return res.json({
+          fulfillable: true,
+          strategy: "cost_optimal_single_warehouse",
+          options: [
+            {
+              warehouse: singleSource.warehouse,
+              quantityAvailable: singleSource.currentQuantity,
+              distanceKm: singleSource.distanceKm,
+            },
+          ],
+        });
+      }
+    } else {
+      const singleSource = validEntries.find((entry) => entry.currentQuantity >= requestedQty);
+      if (singleSource) {
+        return res.json({
+          fulfillable: true,
+          strategy: "single_warehouse",
+          options: [
+            {
+              warehouse: singleSource.warehouse,
+              quantityAvailable: singleSource.currentQuantity,
+            },
+          ],
+        });
+      }
     }
 
     const combination = [];
@@ -124,6 +188,7 @@ const checkAvailability = async (req, res, next) => {
         warehouse: entry.warehouse,
         quantityAvailable: entry.currentQuantity,
         quantityToUse: take,
+        ...(usingCostOptimal ? { distanceKm: entry.distanceKm } : {}),
       });
       remaining -= take;
     }
@@ -131,7 +196,7 @@ const checkAvailability = async (req, res, next) => {
     if (remaining <= 0) {
       return res.json({
         fulfillable: true,
-        strategy: "multi_warehouse",
+        strategy: usingCostOptimal ? "cost_optimal_multi_warehouse" : "multi_warehouse",
         options: combination,
       });
     }

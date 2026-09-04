@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const apiKeyAuth = require("./apiKeyMiddleware");
 
 const protect = async (req, res, next) => {
   let token;
@@ -25,6 +26,20 @@ const protect = async (req, res, next) => {
   }
 };
 
+// Accepts EITHER a JWT (the frontend app, staff/admin) OR an API key
+// (an external system, e.g. an e-commerce platform integration). Routes
+// that both humans and external systems legitimately need to call — like
+// checking stock availability or recording a sale as an outbound movement —
+// use this instead of `protect` so external callers aren't forced through
+// the login flow.
+const flexibleAuth = async (req, res, next) => {
+  if (req.headers["x-api-key"]) {
+    req.isApiKeyAuth = true;
+    return apiKeyAuth(req, res, next);
+  }
+  return protect(req, res, next);
+};
+
 const adminOnly = (req, res, next) => {
   if (req.user && req.user.role === "admin") {
     next();
@@ -33,4 +48,4 @@ const adminOnly = (req, res, next) => {
   }
 };
 
-module.exports = { protect, adminOnly };
+module.exports = { protect, adminOnly, flexibleAuth };

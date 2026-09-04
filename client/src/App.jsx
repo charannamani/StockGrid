@@ -10,6 +10,7 @@ import Products from "./pages/Products";
 import StockView from "./pages/StockView";
 import MovementHistory from "./pages/MovementHistory";
 import Availability from "./pages/Availability";
+import ApiKeys from "./pages/ApiKeys";
 
 import Layout from "./components/Layout";
 
@@ -77,6 +78,15 @@ const AppRoutes = () => {
           element={
             <AdminRoute>
               <Warehouses />
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/api-keys"
+          element={
+            <AdminRoute>
+              <ApiKeys />
             </AdminRoute>
           }
         />

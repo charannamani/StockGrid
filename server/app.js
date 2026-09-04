@@ -4,7 +4,7 @@ const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const { generalLimiter } = require("./middleware/rateLimiter");
 
 const app = express();
-
+app.use("/api/webhooks", require("./routes/webhookRoutes"));
 app.use(cors());
 app.use(express.json());
 app.use(generalLimiter);

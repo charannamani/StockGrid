@@ -42,6 +42,15 @@ const stockMovementSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    performedByApiKey: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ApiKey",
+    },
+    source: {
+      type: String,
+      enum: ["web", "api_key"],
+      default: "web",
+    },
   },
   { timestamps: true }
 );

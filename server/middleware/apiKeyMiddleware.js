@@ -11,7 +11,10 @@ const apiKeyAuth = async (req, res, next) => {
   try {
     const hashedKey = ApiKey.hashKey(rawKey);
 
-    const apiKeyDoc = await ApiKey.findOne({ key: hashedKey, isActive: true });
+    const apiKeyDoc = await ApiKey.findOne({ key: hashedKey, isActive: true }).populate(
+      "createdBy",
+      "_id name role"
+    );
 
     if (!apiKeyDoc) {
       return res.status(401).json({ message: "Invalid or inactive API key" });

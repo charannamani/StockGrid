@@ -32,9 +32,8 @@ const MovementHistory = () => {
       if (activeFilters.product) params.product = activeFilters.product;
       if (activeFilters.warehouse) params.warehouse = activeFilters.warehouse;
 
-      const res = await API.get("/movements", { params });
-      setMovements(res.data.data || res.data || []);
-    } catch (err) {
+           const res = await API.get("/movements", { params });
+      setMovements(res.data.movements || []);    } catch (err) {
       toast.error("Couldn't load movement history");
     } finally {
       setLoading(false);

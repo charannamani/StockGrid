@@ -1,10 +1,10 @@
 const Product = require("../models/Product");
 
-// Get all products with optional category or search filters
+// Get all active products with optional category or search filters
 const getProducts = async (req, res, next) => {
   try {
     const { category, search } = req.query;
-    const filter = {};
+    const filter = { isActive: true };
 
     if (category) filter.category = category;
     if (search) filter.name = { $regex: search, $options: "i" };
@@ -58,7 +58,7 @@ const createProduct = async (req, res, next) => {
 // Update an existing product (Admin only)
 const updateProduct = async (req, res, next) => {
   try {
-    const { name, category, unitCost, description } = req.body;
+    const { name, category, unitCost, description, isActive } = req.body;
 
     const product = await Product.findById(req.params.id);
     if (!product) {
@@ -70,6 +70,7 @@ const updateProduct = async (req, res, next) => {
     if (category) product.category = category;
     if (unitCost !== undefined) product.unitCost = unitCost;
     if (description !== undefined) product.description = description;
+    if (isActive !== undefined) product.isActive = isActive;
 
     const updatedProduct = await product.save();
     res.json(updatedProduct);
@@ -78,7 +79,10 @@ const updateProduct = async (req, res, next) => {
   }
 };
 
-// Delete a product (Admin only)
+// Deactivate a product (Admin only) — soft delete, matching deleteWarehouse's
+// pattern. A hard delete here would orphan any Stock/StockMovement records
+// that reference this product, silently breaking the audit trail for
+// anything that already happened involving it.
 const deleteProduct = async (req, res, next) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -87,8 +91,10 @@ const deleteProduct = async (req, res, next) => {
       return next(new Error("Product not found"));
     }
 
-    await product.deleteOne();
-    res.json({ message: "Product removed successfully" });
+    product.isActive = false;
+    await product.save();
+
+    res.json({ message: "Product deactivated successfully" });
   } catch (error) {
     next(error);
   }

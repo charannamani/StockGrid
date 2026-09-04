@@ -4,16 +4,28 @@ const Stock = require("../models/Stock");
 const Product = require("../models/Product");
 const Warehouse = require("../models/Warehouse");
 const stockQueue = require("../queues/stockQueue");
-// Fix 1: Destructure the connection instance from the config module
 const { redisConnection: redisClient } = require("../config/redis");
+
+const scanKeys = async (pattern) => {
+  const found = [];
+  let cursor = "0";
+  do {
+    const [nextCursor, keys] = await redisClient.scan(cursor, "MATCH", pattern, "COUNT", 100);
+    cursor = nextCursor;
+    found.push(...keys);
+  } while (cursor !== "0");
+  return found;
+};
 
 const clearStockCache = async () => {
   try {
     if (!redisClient) return;
-    const keys = await redisClient.keys("stocks:*");
-    const whKeys = await redisClient.keys("stock_wh:*");
-    const prodKeys = await redisClient.keys("stock_prod:*");
-    const availKeys = await redisClient.keys("availability:*");
+    const [keys, whKeys, prodKeys, availKeys] = await Promise.all([
+      scanKeys("stocks:*"),
+      scanKeys("stock_wh:*"),
+      scanKeys("stock_prod:*"),
+      scanKeys("availability:*"),
+    ]);
 
     const allKeys = [...keys, ...whKeys, ...prodKeys, ...availKeys];
     if (allKeys.length > 0) {
@@ -24,245 +36,292 @@ const clearStockCache = async () => {
   }
 };
 
-const checkAndTriggerLowStockAlert = async (productId, warehouseId, newQuantity) => {
+const buildAttribution = (req) => {
+  if (req.isApiKeyAuth && req.apiKey) {
+    return {
+      source: "api_key",
+      performedByApiKey: req.apiKey._id,
+      performedBy: req.apiKey.createdBy?._id || req.apiKey.createdBy || undefined,
+    };
+  }
+  if (req.user?._id || req.user?.id) {
+    return { source: "web", performedBy: req.user._id || req.user.id };
+  }
+  return { source: "web" };
+};
+
+const checkStockThresholdEvents = async (productId, warehouseId, previousQuantity, newQuantity, threshold) => {
   try {
     const product = await Product.findById(productId).lean();
     const warehouse = await Warehouse.findById(warehouseId).lean();
+    if (!product || !warehouse) return;
 
-    const threshold = product?.lowStockThreshold ?? 10;
+    const resolvedThreshold = threshold ?? 10;
+    const wasLow = previousQuantity <= resolvedThreshold;
+    const isLowNow = newQuantity <= resolvedThreshold;
 
-    if (product && warehouse && newQuantity <= threshold) {
+    if (isLowNow) {
       await stockQueue.add("lowStockAlert", {
         productId: product._id,
         productName: product.name,
         warehouseId: warehouse._id,
         warehouseName: warehouse.name,
         currentQuantity: newQuantity,
-        threshold,
+        threshold: resolvedThreshold,
+      });
+    } else if (wasLow && !isLowNow) {
+      await stockQueue.add("backInStock", {
+        productId: product._id,
+        productName: product.name,
+        warehouseId: warehouse._id,
+        warehouseName: warehouse.name,
+        currentQuantity: newQuantity,
+        threshold: resolvedThreshold,
       });
     }
   } catch (error) {
-    console.error("Low stock alert queue error:", error.message);
+    console.error("Stock threshold event queue error:", error.message);
   }
 };
 
-const createMovement = async (req, res, next) => {
+const recordMovement = async ({ product, warehouse, type, quantity, reason, attribution }) => {
+  const qty = Number(quantity);
+
+  if (!product || !warehouse || !type || !qty || qty <= 0) {
+    const err = new Error("Invalid movement parameters provided");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (type !== "inbound" && type !== "outbound" && type !== "adjustment") {
+    const err = new Error("Invalid movement type");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const session = await mongoose.startSession();
+  let updatedStock;
+  let movement;
+  let previousQuantity = 0;
+
   try {
-    const product = req.body.product || req.body.productId;
-    const warehouse = req.body.warehouse || req.body.warehouseId;
-    const { type, quantity, reason } = req.body;
+    await session.withTransaction(async () => {
+      const existingStock = await Stock.findOne({ product, warehouse }).session(session);
+      previousQuantity = existingStock ? existingStock.currentQuantity : 0;
 
-    if (!product || !warehouse || !type || !quantity) {
-      res.status(400);
-      return next(new Error("Invalid movement parameters provided"));
-    }
-
-    const qty = Number(quantity);
-    if (qty <= 0) {
-      res.status(400);
-      return next(new Error("Quantity must be greater than zero"));
-    }
-
-    if (type !== "inbound" && type !== "outbound" && type !== "adjustment") {
-      res.status(400);
-      return next(new Error("Invalid movement type"));
-    }
-
-    let stock = await Stock.findOne({ product, warehouse });
-
-    if (!stock) {
-      if (type === "outbound") {
-        res.status(400);
-        return next(new Error("Insufficient stock: Record does not exist"));
+      if (type === "inbound") {
+        updatedStock = await Stock.findOneAndUpdate(
+          { product, warehouse },
+          { $inc: { currentQuantity: qty }, $setOnInsert: { product, warehouse } },
+          { new: true, upsert: true, session }
+        );
+      } else if (type === "outbound") {
+        updatedStock = await Stock.findOneAndUpdate(
+          { product, warehouse, currentQuantity: { $gte: qty } },
+          { $inc: { currentQuantity: -qty } },
+          { new: true, session }
+        );
+        if (!updatedStock) {
+          const err = new Error("Insufficient stock for outbound movement");
+          err.statusCode = 400;
+          throw err;
+        }
+      } else {
+        updatedStock = await Stock.findOneAndUpdate(
+          { product, warehouse },
+          { $set: { currentQuantity: qty }, $setOnInsert: { product, warehouse } },
+          { new: true, upsert: true, session }
+        );
       }
-      stock = new Stock({
+
+      const movementData = {
         product,
+        toWarehouse: type === "inbound" ? warehouse : null,
+        fromWarehouse: type === "outbound" ? warehouse : null,
         warehouse,
-        currentQuantity: 0,
-      });
-    }
+        type,
+        quantity: qty,
+        reason,
+        ...attribution,
+      };
 
-    if (type === "inbound") {
-      stock.currentQuantity += qty;
-    } else if (type === "outbound") {
-      if (stock.currentQuantity < qty) {
-        res.status(400);
-        return next(new Error("Insufficient stock for outbound movement"));
-      }
-      stock.currentQuantity -= qty;
-    } else if (type === "adjustment") {
-      stock.currentQuantity = qty;
-    }
-
-    await stock.save();
-
-    const movementData = {
-      product,
-      toWarehouse: type === "inbound" ? warehouse : null,
-      fromWarehouse: type === "outbound" ? warehouse : null,
-      warehouse: warehouse,
-      type,
-      quantity: qty,
-      reason,
-    };
-
-    if (req.user?._id || req.user?.id) {
-      movementData.performedBy = req.user._id || req.user.id;
-    }
-
-    const movement = await StockMovement.create(movementData);
+      const created = await StockMovement.create([movementData], { session });
+      movement = created[0];
+    });
 
     await clearStockCache();
 
-    if (type === "outbound" || type === "adjustment") {
-      await checkAndTriggerLowStockAlert(product, warehouse, stock.currentQuantity);
-    }
-
-    res.status(201).json(movement);
-  } catch (error) {
-    next(error);
-  }
-};
-
-const transferStock = async (req, res, next) => {
-  try {
-    const { product, fromWarehouse, toWarehouse, quantity, reason } = req.body;
-
-    const qty = Number(quantity);
-    if (!product || !fromWarehouse || !toWarehouse || !qty || qty <= 0) {
-      res.status(400);
-      return next(new Error("Invalid transfer parameters"));
-    }
-
-    if (fromWarehouse === toWarehouse) {
-      res.status(400);
-      return next(new Error("Source and destination warehouses cannot be identical"));
-    }
-
-    let sourceStock = await Stock.findOne({ product, warehouse: fromWarehouse });
-
-    if (!sourceStock || sourceStock.currentQuantity < qty) {
-      res.status(400);
-      return next(new Error("Insufficient stock at source warehouse"));
-    }
-
-    sourceStock.currentQuantity -= qty;
-    await sourceStock.save();
-
-    let targetStock = await Stock.findOne({ product, warehouse: toWarehouse });
-
-    if (!targetStock) {
-      targetStock = new Stock({
-        product,
-        warehouse: toWarehouse,
-        currentQuantity: 0,
-      });
-    }
-
-    targetStock.currentQuantity += qty;
-    await targetStock.save();
-
-    // Fix 2: Generate separate transfer_out and transfer_in movement documents
-    const transferOutData = {
+    await checkStockThresholdEvents(
       product,
-      fromWarehouse,
-      warehouse: fromWarehouse,
-      type: "transfer_out",
-      quantity: qty,
-      reason: reason || "Inter-warehouse transfer",
-    };
+      warehouse,
+      previousQuantity,
+      updatedStock.currentQuantity,
+      updatedStock.lowStockThreshold
+    );
 
-    const transferInData = {
-      product,
-      toWarehouse,
-      warehouse: toWarehouse,
-      type: "transfer_in",
-      quantity: qty,
-      reason: reason || "Inter-warehouse transfer",
-    };
-
-    if (req.user?._id || req.user?.id) {
-      const userId = req.user._id || req.user.id;
-      transferOutData.performedBy = userId;
-      transferInData.performedBy = userId;
-    }
-
-    const [transferOut, transferIn] = await Promise.all([
-      StockMovement.create(transferOutData),
-      StockMovement.create(transferInData),
-    ]);
-
-    await clearStockCache();
-
-    await checkAndTriggerLowStockAlert(product, fromWarehouse, sourceStock.currentQuantity);
-
-    res.status(201).json({ transferOut, transferIn });
-  } catch (error) {
-    next(error);
+    return { movement, stock: updatedStock };
+  } finally {
+    session.endSession();
   }
 };
 
 const getMovementHistory = async (req, res, next) => {
   try {
-    const { product, warehouse, type, page, limit = 10 } = req.query;
-    let filter = {};
+    const { product, warehouse, type, limit = 50, page = 1 } = req.query;
+    const filter = {};
 
-    if (product && mongoose.Types.ObjectId.isValid(product)) {
-      filter.product = product;
-    }
-    if (warehouse && mongoose.Types.ObjectId.isValid(warehouse)) {
-      filter.$or = [
-        { warehouse: warehouse },
-        { fromWarehouse: warehouse },
-        { toWarehouse: warehouse },
-      ];
-    }
+    if (product) filter.product = product;
+    if (warehouse) filter.$or = [{ warehouse }, { fromWarehouse: warehouse }, { toWarehouse: warehouse }];
     if (type) filter.type = type;
 
-    if (page) {
-      const p = parseInt(page, 10);
-      const l = parseInt(limit, 10);
-      const skip = (p - 1) * l;
-
-      const [movements, total] = await Promise.all([
-        StockMovement.find(filter)
-          .populate({ path: "product", select: "name sku category", strictPopulate: false })
-          .populate({ path: "warehouse", select: "name", strictPopulate: false })
-          .populate({ path: "fromWarehouse", select: "name", strictPopulate: false })
-          .populate({ path: "toWarehouse", select: "name", strictPopulate: false })
-          .populate({ path: "performedBy", select: "name email", strictPopulate: false })
-          .sort({ createdAt: -1 })
-          .skip(skip)
-          .limit(l)
-          .lean(),
-        StockMovement.countDocuments(filter),
-      ]);
-
-      return res.json({
-        data: movements,
-        page: p,
-        totalPages: Math.ceil(total / l),
-        total,
-      });
-    }
+    const skip = (Number(page) - 1) * Number(limit);
 
     const movements = await StockMovement.find(filter)
-      .populate({ path: "product", select: "name sku", strictPopulate: false })
-      .populate({ path: "warehouse", select: "name", strictPopulate: false })
-      .populate({ path: "fromWarehouse", select: "name", strictPopulate: false })
-      .populate({ path: "toWarehouse", select: "name", strictPopulate: false })
+      .populate("product", "name sku")
+      .populate("warehouse", "name")
+      .populate("fromWarehouse", "name")
+      .populate("toWarehouse", "name")
+      .populate("performedBy", "name email")
       .sort({ createdAt: -1 })
-      .limit(parseInt(limit, 10))
+      .skip(skip)
+      .limit(Number(limit))
       .lean();
 
-    return res.json(movements);
+    const total = await StockMovement.countDocuments(filter);
+
+    res.json({ movements, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
   } catch (error) {
     next(error);
   }
 };
 
+const createMovement = async (req, res, next) => {
+  const product = req.body.product || req.body.productId;
+  const warehouse = req.body.warehouse || req.body.warehouseId;
+  const { type, quantity, reason } = req.body;
+
+  try {
+    const { movement } = await recordMovement({
+      product,
+      warehouse,
+      type,
+      quantity,
+      reason,
+      attribution: buildAttribution(req),
+    });
+    res.status(201).json(movement);
+  } catch (error) {
+    if (error.statusCode) res.status(error.statusCode);
+    next(error);
+  }
+};
+
+const transferStock = async (req, res, next) => {
+  const { product, fromWarehouse, toWarehouse, quantity, reason } = req.body;
+  const qty = Number(quantity);
+
+  if (!product || !fromWarehouse || !toWarehouse || !qty || qty <= 0) {
+    res.status(400);
+    return next(new Error("Invalid transfer parameters"));
+  }
+
+  if (fromWarehouse === toWarehouse) {
+    res.status(400);
+    return next(new Error("Source and destination warehouses cannot be identical"));
+  }
+
+  const session = await mongoose.startSession();
+  let sourceStock;
+  let targetStock;
+  let transferOut;
+  let transferIn;
+  let sourcePreviousQuantity = 0;
+  let targetPreviousQuantity = 0;
+
+  try {
+    await session.withTransaction(async () => {
+      const existingSource = await Stock.findOne({ product, warehouse: fromWarehouse }).session(session);
+      sourcePreviousQuantity = existingSource ? existingSource.currentQuantity : 0;
+
+      const existingTarget = await Stock.findOne({ product, warehouse: toWarehouse }).session(session);
+      targetPreviousQuantity = existingTarget ? existingTarget.currentQuantity : 0;
+
+      sourceStock = await Stock.findOneAndUpdate(
+        { product, warehouse: fromWarehouse, currentQuantity: { $gte: qty } },
+        { $inc: { currentQuantity: -qty } },
+        { new: true, session }
+      );
+
+      if (!sourceStock) {
+        const err = new Error("Insufficient stock at source warehouse");
+        err.statusCode = 400;
+        throw err;
+      }
+
+      targetStock = await Stock.findOneAndUpdate(
+        { product, warehouse: toWarehouse },
+        { $inc: { currentQuantity: qty }, $setOnInsert: { product, warehouse: toWarehouse } },
+        { new: true, upsert: true, session }
+      );
+
+      const attribution = buildAttribution(req);
+
+      const transferOutData = {
+        product,
+        fromWarehouse,
+        warehouse: fromWarehouse,
+        type: "transfer_out",
+        quantity: qty,
+        reason: reason || "Inter-warehouse transfer",
+        ...attribution,
+      };
+
+      const transferInData = {
+        product,
+        toWarehouse,
+        warehouse: toWarehouse,
+        type: "transfer_in",
+        quantity: qty,
+        reason: reason || "Inter-warehouse transfer",
+        ...attribution,
+      };
+
+      const createdOut = await StockMovement.create([transferOutData], { session });
+      const createdIn = await StockMovement.create([transferInData], { session });
+      transferOut = createdOut[0];
+      transferIn = createdIn[0];
+    });
+
+    await clearStockCache();
+
+    await checkStockThresholdEvents(
+      product,
+      fromWarehouse,
+      sourcePreviousQuantity,
+      sourceStock.currentQuantity,
+      sourceStock.lowStockThreshold
+    );
+
+    await checkStockThresholdEvents(
+      product,
+      toWarehouse,
+      targetPreviousQuantity,
+      targetStock.currentQuantity,
+      targetStock.lowStockThreshold
+    );
+
+    res.status(201).json({ transferOut, transferIn });
+  } catch (error) {
+    if (error.statusCode) res.status(error.statusCode);
+    next(error);
+  } finally {
+    session.endSession();
+  }
+};
+
 module.exports = {
+  getMovementHistory,
   createMovement,
   transferStock,
-  getMovementHistory,
+  recordMovement,
 };

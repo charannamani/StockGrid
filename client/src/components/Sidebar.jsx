@@ -7,6 +7,7 @@ import {
   Boxes,
   ArrowLeftRight,
   ClipboardCheck,
+  KeyRound,
   LogOut,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -18,6 +19,7 @@ const navItems = [
   { to: "/stock", label: "Stock", icon: Boxes },
   { to: "/movements", label: "Movements", icon: ArrowLeftRight },
   { to: "/availability", label: "Availability", icon: ClipboardCheck },
+  { to: "/api-keys", label: "API Keys", icon: KeyRound, adminOnly: true },
 ];
 
 const Sidebar = () => {
@@ -42,7 +44,9 @@ const Sidebar = () => {
       </div>
 
       <nav style={styles.nav}>
-        {navItems.map(({ to, label, icon: Icon }) => (
+        {navItems
+  .filter((item) => !item.adminOnly || user?.role === "admin")
+  .map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}

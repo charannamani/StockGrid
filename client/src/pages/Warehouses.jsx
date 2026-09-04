@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Warehouse, Plus, Pencil, PowerOff, X } from "lucide-react";
+import { Warehouse, Plus, Pencil, PowerOff, X, MapPin } from "lucide-react";
 import API from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 
-const emptyForm = { name: "", address: "", capacity: "" };
+const emptyForm = { name: "", address: "", capacity: "", latitude: "", longitude: "" };
 
 const Warehouses = () => {
   const { user } = useAuth();
@@ -40,7 +40,13 @@ const Warehouses = () => {
 
   const openEdit = (w) => {
     setEditingId(w._id);
-    setForm({ name: w.name, address: w.address || "", capacity: w.capacity ?? "" });
+    setForm({
+      name: w.name,
+      address: w.address || "",
+      capacity: w.capacity ?? "",
+      latitude: w.latitude ?? "",
+      longitude: w.longitude ?? "",
+    });
     setShowForm(true);
   };
 
@@ -58,6 +64,8 @@ const Warehouses = () => {
         name: form.name,
         address: form.address,
         capacity: form.capacity === "" ? undefined : Number(form.capacity),
+        latitude: form.latitude === "" ? undefined : Number(form.latitude),
+        longitude: form.longitude === "" ? undefined : Number(form.longitude),
       };
 
       if (editingId) {
@@ -137,6 +145,17 @@ const Warehouses = () => {
               <div style={styles.cardCapacity}>
                 {w.capacity != null ? `Capacity: ${w.capacity}` : "No capacity limit"}
               </div>
+              {w.latitude != null && w.longitude != null ? (
+                <div style={styles.cardCoords}>
+                  <MapPin size={11} />
+                  {w.latitude.toFixed(4)}, {w.longitude.toFixed(4)}
+                </div>
+              ) : (
+                <div style={styles.cardCoordsMissing}>
+                  <MapPin size={11} />
+                  No coordinates set
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -175,6 +194,38 @@ const Warehouses = () => {
                 value={form.capacity}
                 onChange={(e) => setForm({ ...form, capacity: e.target.value })}
               />
+
+              <div style={styles.coordRow}>
+                <div style={styles.coordCol}>
+                  <label style={styles.label}>Latitude</label>
+                  <input
+                    style={styles.input}
+                    type="number"
+                    step="any"
+                    min="-90"
+                    max="90"
+                    placeholder="e.g. 17.3850"
+                    value={form.latitude}
+                    onChange={(e) => setForm({ ...form, latitude: e.target.value })}
+                  />
+                </div>
+                <div style={styles.coordCol}>
+                  <label style={styles.label}>Longitude</label>
+                  <input
+                    style={styles.input}
+                    type="number"
+                    step="any"
+                    min="-180"
+                    max="180"
+                    placeholder="e.g. 78.4867"
+                    value={form.longitude}
+                    onChange={(e) => setForm({ ...form, longitude: e.target.value })}
+                  />
+                </div>
+              </div>
+              <p style={styles.coordHint}>
+                Optional — used for distance-based fulfillment routing. Leave blank if unknown.
+              </p>
 
               <button style={styles.submitBtn} type="submit" disabled={saving}>
                 {saving ? "Saving..." : editingId ? "Save Changes" : "Create Warehouse"}
@@ -251,6 +302,22 @@ const styles = {
   cardName: { fontSize: "15px", fontWeight: 700, color: "#111827" },
   cardAddress: { fontSize: "13px", color: "#64748b", marginTop: "4px" },
   cardCapacity: { fontSize: "12px", color: "#94a3b8", marginTop: "8px" },
+  cardCoords: {
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+    fontSize: "11px",
+    color: "#16a34a",
+    marginTop: "6px",
+  },
+  cardCoordsMissing: {
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+    fontSize: "11px",
+    color: "#cbd5e1",
+    marginTop: "6px",
+  },
   section: {
     background: "#fff",
     borderRadius: "12px",
@@ -303,6 +370,19 @@ const styles = {
     border: "1px solid #e2e8f0",
     fontSize: "14px",
     boxSizing: "border-box",
+  },
+  coordRow: {
+    display: "flex",
+    gap: "10px",
+  },
+  coordCol: {
+    flex: 1,
+  },
+  coordHint: {
+    fontSize: "11px",
+    color: "#94a3b8",
+    marginTop: "6px",
+    marginBottom: 0,
   },
   submitBtn: {
     width: "100%",

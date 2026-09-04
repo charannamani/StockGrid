@@ -22,16 +22,31 @@ const apiKeySchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+
+    callbackUrl: {
+      type: String,
+      trim: true,
+      validate: {
+        validator: function (value) {
+          if (!value) return true; 
+          try {
+            const parsed = new URL(value);
+            return parsed.protocol === "http:" || parsed.protocol === "https:";
+          } catch {
+            return false;
+          }
+        },
+        message: "callbackUrl must be a valid http(s) URL",
+      },
+    },
   },
   { timestamps: true }
 );
 
-// Generates a random API key string (raw key, shown to the user only once)
 apiKeySchema.statics.generateRawKey = function () {
   return crypto.randomBytes(32).toString("hex");
 };
 
-// Hash a raw key for storage/lookup comparison
 apiKeySchema.statics.hashKey = function (rawKey) {
   return crypto.createHash("sha256").update(rawKey).digest("hex");
 };

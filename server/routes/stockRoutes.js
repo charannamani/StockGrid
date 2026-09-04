@@ -6,10 +6,10 @@ const {
   getStockByProduct,
   checkAvailability,
 } = require("../controllers/stockController");
-const { protect } = require("../middleware/authMiddleware");
+const { flexibleAuth } = require("../middleware/authMiddleware");
 const cache = require("../middleware/cacheMiddleware");
 
-router.use(protect);
+router.use(flexibleAuth);
 
 router.get("/", cache("stocks", 300), getStockLevels);
 router.get("/availability", cache("availability", 60), checkAvailability);
