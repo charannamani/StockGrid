@@ -7,7 +7,6 @@ const {
 } = require("../controllers/movementController");
 const { protect, flexibleAuth } = require("../middleware/authMiddleware");
 
-// Routes
 router.get("/", protect, getMovementHistory);
 router.post("/", flexibleAuth, createMovement);
 router.post("/transfer", protect, transferStock);

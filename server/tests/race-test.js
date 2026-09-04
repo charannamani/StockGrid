@@ -1,11 +1,4 @@
-// Race condition test — fires two outbound requests at the exact same time
-// against a stock record with currentQuantity: 10, each asking for qty: 8.
-//
-// Expected AFTER the fix: exactly ONE succeeds (201), the other fails (400,
-// "Insufficient stock for outbound movement"), and final currentQuantity is 2.
-//
-// If you saw this against the OLD (pre-fix) code, both would likely succeed
-// and currentQuantity would go to -6 — that's the bug that's now closed.
+
 
 const TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhNzhkMWVhZDhjNWI5NWQyM2RmODFjNyIsInJvbGUiOiJhZG1pbiIsImlhdCI6MTc4Nzg1MjgyMCwiZXhwIjoxNzg4NDU3NjIwfQ.htqQDM784T1kja4rKEku-l__sTtxO-vKjqgkkA5rAa8";
 const PRODUCT_ID = "6a9077518c7ea9eab9185b62";

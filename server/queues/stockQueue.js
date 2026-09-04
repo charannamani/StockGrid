@@ -4,12 +4,12 @@ const { redisConfig } = require("../config/redis");
 const stockQueue = new Queue("lowStockAlerts", {
   connection: redisConfig,
   defaultJobOptions: {
-    attempts: 3, // Auto-retry failed jobs 3 times
+    attempts: 3, 
     backoff: {
       type: "exponential",
-      delay: 3000, // 3s, 6s, 12s retries
+      delay: 3000,
     },
-    removeOnComplete: true, // Auto-clean finished jobs from Redis
+    removeOnComplete: true, 
   },
 });
 

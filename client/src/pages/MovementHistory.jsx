@@ -76,8 +76,8 @@ const MovementHistory = () => {
     setSaving(true);
     try {
       const payload = {
-        productId: movementForm.product,     // Aligned with backend req.body
-        warehouseId: movementForm.warehouse, // Aligned with backend req.body
+        productId: movementForm.product,    
+        warehouseId: movementForm.warehouse, 
         type: movementForm.type,
         quantity: Number(movementForm.quantity),
         reason: movementForm.reason,
@@ -103,9 +103,9 @@ const MovementHistory = () => {
     setSaving(true);
     try {
       const payload = {
-        productId: transferForm.product,              // Aligned with backend req.body
-        fromWarehouseId: transferForm.fromWarehouse, // Aligned with backend req.body
-        toWarehouseId: transferForm.toWarehouse,     // Aligned with backend req.body
+        productId: transferForm.product,              
+        fromWarehouseId: transferForm.fromWarehouse, 
+        toWarehouseId: transferForm.toWarehouse,     
         quantity: Number(transferForm.quantity),
         reason: transferForm.reason,
       };

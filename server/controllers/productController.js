@@ -1,6 +1,5 @@
 const Product = require("../models/Product");
 
-// Get all active products with optional category or search filters
 const getProducts = async (req, res, next) => {
   try {
     const { category, search } = req.query;
@@ -16,7 +15,6 @@ const getProducts = async (req, res, next) => {
   }
 };
 
-// Get single product details by ID
 const getProductById = async (req, res, next) => {
   try {
     const product = await Product.findById(req.params.id).lean(); // Optimization
@@ -30,7 +28,6 @@ const getProductById = async (req, res, next) => {
   }
 };
 
-// Create a new product (Admin only)
 const createProduct = async (req, res, next) => {
   try {
     const { name, sku, category, unitCost, description } = req.body;
@@ -55,7 +52,6 @@ const createProduct = async (req, res, next) => {
   }
 };
 
-// Update an existing product (Admin only)
 const updateProduct = async (req, res, next) => {
   try {
     const { name, category, unitCost, description, isActive } = req.body;
@@ -79,10 +75,7 @@ const updateProduct = async (req, res, next) => {
   }
 };
 
-// Deactivate a product (Admin only) — soft delete, matching deleteWarehouse's
-// pattern. A hard delete here would orphan any Stock/StockMovement records
-// that reference this product, silently breaking the audit trail for
-// anything that already happened involving it.
+
 const deleteProduct = async (req, res, next) => {
   try {
     const product = await Product.findById(req.params.id);
