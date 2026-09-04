@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Warehouse,
   Search,
-  SlidersHorizontal,
 } from "lucide-react";
 import API from "../utils/api";
 import toast from "react-hot-toast";
@@ -14,6 +13,7 @@ const StockView = () => {
   const [warehouses, setWarehouses] = useState([]);
   const [selectedWarehouse, setSelectedWarehouse] = useState("");
   const [stock, setStock] = useState([]);
+  const [warehouseMeta, setWarehouseMeta] = useState({ totalOccupancy: 0, capacity: null, spaceLeft: null, isOverCapacity: false });
   const [search, setSearch] = useState("");
   const [loadingWarehouses, setLoadingWarehouses] = useState(true);
   const [loadingStock, setLoadingStock] = useState(false);
@@ -41,7 +41,13 @@ const StockView = () => {
       setLoadingStock(true);
       try {
         const res = await API.get(`/stock/warehouse/${selectedWarehouse}`);
-        setStock(res.data || []);
+        setStock(res.data.stock || []);
+        setWarehouseMeta({
+          totalOccupancy: res.data.totalOccupancy || 0,
+          capacity: res.data.capacity,
+          spaceLeft: res.data.spaceLeft,
+          isOverCapacity: res.data.isOverCapacity,
+        });
       } catch (err) {
         toast.error("Couldn't load stock for this warehouse");
       } finally {
@@ -59,7 +65,6 @@ const StockView = () => {
       entry.product?.sku?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalQuantity = stock.reduce((sum, entry) => sum + (entry.currentQuantity || 0), 0);
   const lowStockCount = stock.filter(
     (entry) => entry.currentQuantity <= entry.lowStockThreshold
   ).length;
@@ -70,12 +75,11 @@ const StockView = () => {
 
   return (
     <div style={styles.container}>
-      {/* Header & Warehouse Switcher */}
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>Location Stock View</h1>
           <p style={styles.subtitle}>
-            Real-time physical inventory count and reorder thresholds per facility.
+            Real-time physical inventory count and facility capacity tracking.
           </p>
         </div>
 
@@ -88,23 +92,39 @@ const StockView = () => {
           >
             {warehouses.map((w) => (
               <option key={w._id} value={w._id}>
-                {w.name} ({w.address || "Main Facility"})
+                {w.name} — {w.address || "Main Facility"}
               </option>
             ))}
           </select>
         </div>
       </div>
 
-      {/* Summary Banner for Selected Facility */}
       <div style={styles.summaryBar}>
         <div style={styles.summaryItem}>
-          <span style={styles.summaryLabel}>Active Facility</span>
+          <span style={styles.summaryLabel}>Active Facility & Area</span>
           <span style={styles.summaryValue}>{activeWarehouseObj?.name || "—"}</span>
+          <span style={styles.summarySub}>{activeWarehouseObj?.address || "No area recorded"}</span>
         </div>
         <div style={styles.divider} />
         <div style={styles.summaryItem}>
-          <span style={styles.summaryLabel}>Total On-Hand Units</span>
-          <span style={styles.summaryValue}>{totalQuantity.toLocaleString()}</span>
+          <span style={styles.summaryLabel}>On-Hand Units / Capacity</span>
+          <span style={styles.summaryValue}>
+            {warehouseMeta.totalOccupancy.toLocaleString()}
+            {warehouseMeta.capacity != null ? ` / ${warehouseMeta.capacity.toLocaleString()}` : " (No Cap)"}
+          </span>
+          <span
+            style={{
+              ...styles.summarySub,
+              color: warehouseMeta.isOverCapacity ? "#dc2626" : "#16a34a",
+              fontWeight: 600,
+            }}
+          >
+            {warehouseMeta.capacity == null
+              ? "Unlimited Capacity"
+              : warehouseMeta.isOverCapacity
+              ? `Over capacity by ${Math.abs(warehouseMeta.spaceLeft)} units`
+              : `${warehouseMeta.spaceLeft} units space available`}
+          </span>
         </div>
         <div style={styles.divider} />
         <div style={styles.summaryItem}>
@@ -120,7 +140,6 @@ const StockView = () => {
         </div>
       </div>
 
-      {/* Search Input */}
       <div style={styles.controlBar}>
         <div style={styles.searchWrapper}>
           <Search size={16} color="#94a3b8" />
@@ -133,7 +152,6 @@ const StockView = () => {
         </div>
       </div>
 
-      {/* Stock Table */}
       <div style={styles.tableCard}>
         {loadingStock ? (
           <div style={styles.emptyState}>Syncing live inventory data...</div>
@@ -254,6 +272,7 @@ const styles = {
   summaryItem: { display: "flex", flexDirection: "column", gap: "2px" },
   summaryLabel: { fontSize: "11px", fontWeight: 700, color: "#64748b", letterSpacing: "0.04em" },
   summaryValue: { fontSize: "18px", fontWeight: 800, color: "#0f172a" },
+  summarySub: { fontSize: "11px", color: "#64748b" },
   divider: { width: "1px", height: "32px", background: "#e2e8f0" },
   controlBar: { marginBottom: "16px" },
   searchWrapper: {

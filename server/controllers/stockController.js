@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Stock = require("../models/Stock");
 const Product = require("../models/Product");
+const Warehouse = require("../models/Warehouse");
 
 const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   const R = 6371;
@@ -29,11 +30,11 @@ const getStockLevels = async (req, res, next) => {
     }
 
     const stock = await Stock.find(filter)
-      .populate("product", "name sku category unitCost price lowStockThreshold")
-      .populate("warehouse", "name address latitude longitude")
+      .populate("product", "name sku category unitCost")
+      .populate("warehouse", "name address latitude longitude isActive")
       .lean();
 
-    const validStock = stock.filter((entry) => entry.product && entry.warehouse);
+    const validStock = stock.filter((entry) => entry.product && entry.warehouse && entry.warehouse.isActive !== false);
 
     res.json(validStock);
   } catch (error) {
@@ -46,15 +47,31 @@ const getStockByWarehouse = async (req, res, next) => {
     const { warehouseId } = req.params;
 
     if (!warehouseId || !mongoose.Types.ObjectId.isValid(warehouseId)) {
-      return res.json([]);
+      return res.json({ stock: [], totalOccupancy: 0, capacity: null, spaceLeft: null, isOverCapacity: false });
     }
 
-    const stock = await Stock.find({ warehouse: warehouseId })
-      .populate("product", "name sku category unitCost price lowStockThreshold")
-      .lean();
+    const [warehouse, stock] = await Promise.all([
+      Warehouse.findById(warehouseId).lean(),
+      Stock.find({ warehouse: warehouseId }).populate("product", "name sku category unitCost").lean(),
+    ]);
+
+    if (!warehouse || warehouse.isActive === false) {
+      return res.json({ stock: [], totalOccupancy: 0, capacity: null, spaceLeft: null, isOverCapacity: false });
+    }
 
     const validStock = stock.filter((entry) => entry.product);
-    res.json(validStock);
+    const totalOccupancy = validStock.reduce((sum, entry) => sum + (entry.currentQuantity || 0), 0);
+    const capacity = warehouse.capacity != null ? warehouse.capacity : null;
+    const spaceLeft = capacity != null ? capacity - totalOccupancy : null;
+    const isOverCapacity = capacity != null ? totalOccupancy > capacity : false;
+
+    res.json({
+      stock: validStock,
+      totalOccupancy,
+      capacity,
+      spaceLeft,
+      isOverCapacity,
+    });
   } catch (error) {
     next(error);
   }
@@ -69,10 +86,10 @@ const getStockByProduct = async (req, res, next) => {
     }
 
     const stock = await Stock.find({ product: productId })
-      .populate("warehouse", "name address latitude longitude")
+      .populate("warehouse", "name address latitude longitude isActive")
       .lean();
 
-    const validStock = stock.filter((entry) => entry.warehouse);
+    const validStock = stock.filter((entry) => entry.warehouse && entry.warehouse.isActive !== false);
     const totalQuantity = validStock.reduce((sum, entry) => sum + (entry.currentQuantity || 0), 0);
 
     res.json({ totalQuantity, byWarehouse: validStock });
@@ -97,7 +114,7 @@ const checkAvailability = async (req, res, next) => {
     const requestedQty = Number(quantity);
 
     const product = await Product.findById(productId).lean();
-    if (!product) {
+    if (!product || product.isActive === false) {
       return res.json({
         fulfillable: false,
         strategy: "product_not_found",
@@ -107,10 +124,10 @@ const checkAvailability = async (req, res, next) => {
     }
 
     const stockEntries = await Stock.find({ product: productId, currentQuantity: { $gt: 0 } })
-      .populate("warehouse", "name address latitude longitude")
+      .populate("warehouse", "name address latitude longitude isActive")
       .lean();
 
-    let validEntries = stockEntries.filter((entry) => entry.warehouse);
+    let validEntries = stockEntries.filter((entry) => entry.warehouse && entry.warehouse.isActive !== false);
 
     const hasDestination = destLat !== undefined && destLng !== undefined && destLat !== "" && destLng !== "";
     const destLatNum = Number(destLat);
@@ -128,14 +145,15 @@ const checkAvailability = async (req, res, next) => {
         validEntries = entriesWithCoords
           .map((entry) => ({
             ...entry,
-            distanceKm: Math.round(
-              haversineDistanceKm(
-                destLatNum,
-                destLngNum,
-                entry.warehouse.latitude,
-                entry.warehouse.longitude
-              ) * 10
-            ) / 10,
+            distanceKm:
+              Math.round(
+                haversineDistanceKm(
+                  destLatNum,
+                  destLngNum,
+                  entry.warehouse.latitude,
+                  entry.warehouse.longitude
+                ) * 10
+              ) / 10,
           }))
           .sort((a, b) => a.distanceKm - b.distanceKm);
       }
@@ -144,8 +162,6 @@ const checkAvailability = async (req, res, next) => {
     if (!usingCostOptimal) {
       validEntries = validEntries.sort((a, b) => b.currentQuantity - a.currentQuantity);
     }
-
-    const strategy = usingCostOptimal ? "cost_optimal" : "quantity_greedy";
 
     if (usingCostOptimal) {
       const singleSource = validEntries.find((entry) => entry.currentQuantity >= requestedQty);

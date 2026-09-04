@@ -4,13 +4,12 @@ import {
   Package,
   Warehouse,
   Boxes,
-  ArrowLeftRight,
+  Activity,
+  Layers,
   AlertTriangle,
   Plus,
   Search,
   ArrowUpRight,
-  Activity,
-  Layers,
 } from "lucide-react";
 import API from "../utils/api";
 import { useAuth } from "../context/AuthContext";
@@ -51,13 +50,14 @@ const Dashboard = () => {
         let lowStockCount = 0;
         const distribution = [];
 
-        // Fetch stock per warehouse for distribution and low-stock checks
         const stockPerWarehouse = await Promise.all(
           warehouses.map((w) => API.get(`/stock/warehouse/${w._id}`))
         );
 
         stockPerWarehouse.forEach((res, idx) => {
-          const warehouseStock = res.data || [];
+          const rawData = res.data;
+          const warehouseStock = Array.isArray(rawData) ? rawData : (rawData?.stock || []);
+
           const qtySum = warehouseStock.reduce((s, entry) => {
             const qty = entry.currentQuantity || 0;
             const threshold = entry.lowStockThreshold || 10;
@@ -77,7 +77,8 @@ const Dashboard = () => {
           warehouseCount: warehouses.length,
           totalStock,
           lowStockCount,
-          movements: (movementsRes.data.movements || []).slice(0, 6),          warehouseDistribution: distribution,
+          movements: (movementsRes.data.movements || []).slice(0, 6),
+          warehouseDistribution: distribution,
         });
       } catch (err) {
         toast.error("Couldn't load real-time dashboard data");
@@ -106,28 +107,28 @@ const Dashboard = () => {
     {
       label: "Total Units Stored",
       value: stats.totalStock.toLocaleString(),
-      subtext: "Across all locations",
+      subtext: "Across all operational locations",
       icon: Boxes,
-      badge: null,
+      alert: false,
     },
     {
       label: "Active Warehouses",
       value: stats.warehouseCount,
-      subtext: "Operational facilities",
+      subtext: "Configured storage facilities",
       icon: Warehouse,
-      badge: null,
+      alert: false,
     },
     {
       label: "Catalog SKUs",
       value: stats.productCount,
-      subtext: "Registered products",
+      subtext: "Registered products in network",
       icon: Package,
-      badge: null,
+      alert: false,
     },
     {
       label: "Low Stock Alerts",
       value: stats.lowStockCount,
-      subtext: "Below safety threshold",
+      subtext: "Below safe reorder minimum",
       icon: AlertTriangle,
       alert: stats.lowStockCount > 0,
     },
@@ -135,7 +136,6 @@ const Dashboard = () => {
 
   return (
     <div style={styles.container}>
-      {/* Dashboard Top Navigation & Header */}
       <div style={styles.header}>
         <div>
           <div style={styles.welcomeRow}>
@@ -145,11 +145,10 @@ const Dashboard = () => {
             </span>
           </div>
           <p style={styles.subtitle}>
-            Welcome back, <strong style={{ color: "#0f172a" }}>{user?.name || "Operator"}</strong>. Here is your operational summary.
+            Welcome back, <strong style={{ color: "#0f172a" }}>{user?.name || "Operator"}</strong>. Operational multi-warehouse summary.
           </p>
         </div>
 
-        {/* Quick Action Bar */}
         <div style={styles.actionGroup}>
           <button style={styles.secondaryBtn} onClick={() => navigate("/availability")}>
             <Search size={16} />
@@ -157,12 +156,11 @@ const Dashboard = () => {
           </button>
           <button style={styles.primaryBtn} onClick={() => navigate("/movements")}>
             <Plus size={16} />
-            <span>Log Stock Movement</span>
+            <span>Log Movement</span>
           </button>
         </div>
       </div>
 
-      {/* KPI Metric Cards */}
       <div style={styles.cardGrid}>
         {cards.map(({ label, value, subtext, icon: Icon, alert }) => (
           <div
@@ -176,9 +174,7 @@ const Dashboard = () => {
               <div style={{ ...styles.cardIcon, ...(alert ? styles.cardIconAlert : {}) }}>
                 <Icon size={20} color="#fff" />
               </div>
-              {alert && (
-                <span style={styles.alertBadge}>Action Needed</span>
-              )}
+              {alert && <span style={styles.alertBadge}>Action Needed</span>}
             </div>
             <div>
               <div style={styles.cardValue}>{value}</div>
@@ -189,9 +185,7 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Dual Column Layout: Activity Feed + Warehouse Breakdown */}
       <div style={styles.mainGrid}>
-        {/* Left Main Feed: Recent Movements */}
         <div style={styles.feedSection}>
           <div style={styles.sectionHeader}>
             <div style={styles.sectionTitleGroup}>
@@ -214,7 +208,7 @@ const Dashboard = () => {
                 <span>PRODUCT / SKU</span>
                 <span>TYPE</span>
                 <span style={{ textAlign: "right" }}>QTY</span>
-                <span>LOCATION</span>
+                <span>FACILITY</span>
                 <span style={{ textAlign: "right" }}>DATE</span>
               </div>
               {stats.movements.map((m) => {
@@ -258,7 +252,6 @@ const Dashboard = () => {
           )}
         </div>
 
-        {/* Right Sidebar Widget: Warehouse Distribution */}
         <div style={styles.sideSection}>
           <div style={styles.sectionHeader}>
             <div style={styles.sectionTitleGroup}>
@@ -301,17 +294,6 @@ const Dashboard = () => {
               })
             )}
           </div>
-
-          {/* System Audit Status Banner */}
-          <div style={styles.systemStatusBanner}>
-            <div style={styles.statusPulse} />
-            <div>
-              <div style={styles.statusTitle}>ACID Transaction Engine Active</div>
-              <div style={styles.statusDesc}>
-                All movements are audited with strict database locking.
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -319,10 +301,7 @@ const Dashboard = () => {
 };
 
 const styles = {
-  container: {
-    maxWidth: "1280px",
-    margin: "0 auto",
-  },
+  container: { maxWidth: "1280px", margin: "0 auto" },
   header: {
     display: "flex",
     justifyContent: "space-between",
@@ -331,24 +310,9 @@ const styles = {
     flexWrap: "wrap",
     gap: "16px",
   },
-  welcomeRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-  },
-  title: {
-    fontSize: "24px",
-    fontWeight: 800,
-    color: "#0f172a",
-    letterSpacing: "-0.02em",
-    margin: 0,
-  },
-  subtitle: {
-    fontSize: "14px",
-    color: "#64748b",
-    marginTop: "6px",
-    margin: 0,
-  },
+  welcomeRow: { display: "flex", alignItems: "center", gap: "12px" },
+  title: { fontSize: "24px", fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em", margin: 0 },
+  subtitle: { fontSize: "14px", color: "#64748b", marginTop: "6px", margin: 0 },
   liveBadge: {
     display: "inline-flex",
     alignItems: "center",
@@ -361,17 +325,8 @@ const styles = {
     fontSize: "12px",
     fontWeight: 600,
   },
-  liveDot: {
-    width: "6px",
-    height: "6px",
-    borderRadius: "50%",
-    background: "#16a34a",
-  },
-  actionGroup: {
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  },
+  liveDot: { width: "6px", height: "6px", borderRadius: "50%", background: "#16a34a" },
+  actionGroup: { display: "flex", alignItems: "center", gap: "10px" },
   primaryBtn: {
     display: "flex",
     alignItems: "center",
@@ -384,8 +339,6 @@ const styles = {
     fontWeight: 600,
     fontSize: "13px",
     cursor: "pointer",
-    boxShadow: "0 2px 8px rgba(239, 68, 68, 0.25)",
-    transition: "transform 0.15s ease",
   },
   secondaryBtn: {
     display: "flex",
@@ -414,17 +367,9 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: "16px",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
   },
-  cardAlert: {
-    borderColor: "#fca5a5",
-    background: "#fff5f5",
-  },
-  cardTop: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
+  cardAlert: { borderColor: "#fca5a5", background: "#fff5f5" },
+  cardTop: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   cardIcon: {
     width: "42px",
     height: "42px",
@@ -434,9 +379,7 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
   },
-  cardIconAlert: {
-    background: "#dc2626",
-  },
+  cardIconAlert: { background: "#dc2626" },
   alertBadge: {
     fontSize: "11px",
     fontWeight: 700,
@@ -445,35 +388,15 @@ const styles = {
     padding: "3px 8px",
     borderRadius: "6px",
   },
-  cardValue: {
-    fontSize: "26px",
-    fontWeight: 800,
-    color: "#0f172a",
-    lineHeight: "1.2",
-  },
-  cardLabel: {
-    fontSize: "13px",
-    fontWeight: 600,
-    color: "#334155",
-    marginTop: "2px",
-  },
-  cardSubtext: {
-    fontSize: "11px",
-    color: "#94a3b8",
-    marginTop: "2px",
-  },
-  mainGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr",
-    gap: "24px",
-    alignItems: "start",
-  },
+  cardValue: { fontSize: "26px", fontWeight: 800, color: "#0f172a", lineHeight: "1.2" },
+  cardLabel: { fontSize: "13px", fontWeight: 600, color: "#334155", marginTop: "2px" },
+  cardSubtext: { fontSize: "11px", color: "#94a3b8", marginTop: "2px" },
+  mainGrid: { display: "grid", gridTemplateColumns: "1fr", gap: "24px", alignItems: "start" },
   feedSection: {
     background: "#ffffff",
     borderRadius: "14px",
     padding: "24px",
     border: "1px solid #e2e8f0",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
   },
   sideSection: {
     background: "#ffffff",
@@ -484,23 +407,9 @@ const styles = {
     flexDirection: "column",
     gap: "20px",
   },
-  sectionHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "18px",
-  },
-  sectionTitleGroup: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-  },
-  sectionTitle: {
-    fontSize: "16px",
-    fontWeight: 700,
-    color: "#0f172a",
-    margin: 0,
-  },
+  sectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" },
+  sectionTitleGroup: { display: "flex", alignItems: "center", gap: "8px" },
+  sectionTitle: { fontSize: "16px", fontWeight: 700, color: "#0f172a", margin: 0 },
   viewAllLink: {
     fontSize: "12px",
     fontWeight: 600,
@@ -510,11 +419,7 @@ const styles = {
     alignItems: "center",
     gap: "4px",
   },
-  tableWrapper: {
-    display: "flex",
-    flexDirection: "column",
-    width: "100%",
-  },
+  tableWrapper: { display: "flex", flexDirection: "column", width: "100%" },
   tableHeaderRow: {
     display: "grid",
     gridTemplateColumns: "2.5fr 1.2fr 1fr 1.5fr 1fr",
@@ -535,18 +440,9 @@ const styles = {
     borderBottom: "1px solid #f1f5f9",
     fontSize: "13px",
   },
-  productCell: {
-    display: "flex",
-    flexDirection: "column",
-  },
-  productName: {
-    fontWeight: 600,
-    color: "#0f172a",
-  },
-  productSku: {
-    fontSize: "11px",
-    color: "#94a3b8",
-  },
+  productCell: { display: "flex", flexDirection: "column" },
+  productName: { fontWeight: 600, color: "#0f172a" },
+  productSku: { fontSize: "11px", color: "#94a3b8" },
   badge: {
     fontSize: "11px",
     fontWeight: 600,
@@ -555,107 +451,24 @@ const styles = {
     border: "1px solid",
     display: "inline-block",
   },
-  qtyCell: {
-    fontWeight: 700,
-    color: "#0f172a",
-    textAlign: "right",
-  },
-  locationCell: {
-    color: "#475569",
-    fontWeight: 500,
-  },
-  dateCell: {
-    color: "#94a3b8",
-    fontSize: "12px",
-    textAlign: "right",
-  },
-  emptyState: {
-    padding: "40px",
-    textAlign: "center",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "10px",
-  },
-  emptyText: {
-    fontSize: "13px",
-    color: "#94a3b8",
-  },
-  distributionList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px",
-  },
-  distItem: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
-  },
-  distMeta: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: "13px",
-  },
-  distName: {
-    fontWeight: 600,
-    color: "#334155",
-  },
-  distValue: {
-    color: "#64748b",
-    fontSize: "12px",
-  },
-  progressBarTrack: {
-    width: "100%",
-    height: "8px",
-    background: "#f1f5f9",
-    borderRadius: "999px",
-    overflow: "hidden",
-  },
+  qtyCell: { fontWeight: 700, color: "#0f172a", textAlign: "right" },
+  locationCell: { color: "#475569", fontWeight: 500 },
+  dateCell: { color: "#94a3b8", fontSize: "12px", textAlign: "right" },
+  emptyState: { padding: "40px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" },
+  emptyText: { fontSize: "13px", color: "#94a3b8" },
+  distributionList: { display: "flex", flexDirection: "column", gap: "16px" },
+  distItem: { display: "flex", flexDirection: "column", gap: "6px" },
+  distMeta: { display: "flex", justifyContent: "space-between", fontSize: "13px" },
+  distName: { fontWeight: 600, color: "#334155" },
+  distValue: { color: "#64748b", fontSize: "12px" },
+  progressBarTrack: { width: "100%", height: "8px", background: "#f1f5f9", borderRadius: "999px", overflow: "hidden" },
   progressBarFill: {
     height: "100%",
     background: "linear-gradient(90deg, #ef4444, #f59e0b)",
     borderRadius: "999px",
-    transition: "width 0.4s ease",
   },
-  systemStatusBanner: {
-    marginTop: "8px",
-    padding: "12px 16px",
-    borderRadius: "10px",
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-  },
-  statusPulse: {
-    width: "10px",
-    height: "10px",
-    borderRadius: "50%",
-    background: "#f59e0b",
-    flexShrink: 0,
-  },
-  statusTitle: {
-    fontSize: "12px",
-    fontWeight: 700,
-    color: "#0f172a",
-  },
-  statusDesc: {
-    fontSize: "11px",
-    color: "#64748b",
-  },
-  headerSkeleton: {
-    width: "300px",
-    height: "40px",
-    background: "#e2e8f0",
-    borderRadius: "8px",
-    marginBottom: "24px",
-  },
-  cardSkeleton: {
-    height: "120px",
-    background: "#ffffff",
-    borderRadius: "14px",
-    border: "1px solid #e2e8f0",
-  },
+  headerSkeleton: { width: "300px", height: "40px", background: "#e2e8f0", borderRadius: "8px", marginBottom: "24px" },
+  cardSkeleton: { height: "120px", background: "#ffffff", borderRadius: "14px", border: "1px solid #e2e8f0" },
 };
 
 export default Dashboard;

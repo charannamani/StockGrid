@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Warehouse, Plus, Pencil, PowerOff, X, MapPin } from "lucide-react";
+import { Warehouse, Plus, Pencil, PowerOff, X, MapPin, Navigation } from "lucide-react";
 import API from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
@@ -16,6 +16,7 @@ const Warehouses = () => {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [detectingLocation, setDetectingLocation] = useState(false);
 
   const fetchWarehouses = async () => {
     try {
@@ -54,6 +55,29 @@ const Warehouses = () => {
     setShowForm(false);
     setForm(emptyForm);
     setEditingId(null);
+  };
+
+  const handleDetectLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocation is not supported by your browser");
+      return;
+    }
+    setDetectingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setForm((prev) => ({
+          ...prev,
+          latitude: Number(pos.coords.latitude.toFixed(4)),
+          longitude: Number(pos.coords.longitude.toFixed(4)),
+        }));
+        toast.success("Location coordinates auto-detected!");
+        setDetectingLocation(false);
+      },
+      (err) => {
+        toast.error("Couldn't detect location. Please enter manually.");
+        setDetectingLocation(false);
+      }
+    );
   };
 
   const handleSubmit = async (e) => {
@@ -102,8 +126,8 @@ const Warehouses = () => {
     <div>
       <div style={styles.header}>
         <div>
-          <h1 style={styles.title}>Warehouses</h1>
-          <p style={styles.subtitle}>{warehouses.length} active location{warehouses.length !== 1 ? "s" : ""}</p>
+          <h1 style={styles.title}>Warehouses & Facilities</h1>
+          <p style={styles.subtitle}>{warehouses.length} active physical distribution point{warehouses.length !== 1 ? "s" : ""}</p>
         </div>
         {isAdmin && (
           <button style={styles.primaryBtn} onClick={openCreate}>
@@ -115,7 +139,7 @@ const Warehouses = () => {
 
       {warehouses.length === 0 ? (
         <div style={styles.section}>
-          <p style={styles.emptyText}>No warehouses yet.</p>
+          <p style={styles.emptyText}>No warehouses configured.</p>
         </div>
       ) : (
         <div style={styles.grid}>
@@ -141,19 +165,19 @@ const Warehouses = () => {
                 )}
               </div>
               <div style={styles.cardName}>{w.name}</div>
-              <div style={styles.cardAddress}>{w.address || "No address set"}</div>
+              <div style={styles.cardAddress}>Area / Address: {w.address || "Unspecified Area"}</div>
               <div style={styles.cardCapacity}>
-                {w.capacity != null ? `Capacity: ${w.capacity}` : "No capacity limit"}
+                {w.capacity != null ? `Storage Capacity: ${w.capacity.toLocaleString()} units` : "Capacity: Unlimited"}
               </div>
               {w.latitude != null && w.longitude != null ? (
                 <div style={styles.cardCoords}>
                   <MapPin size={11} />
-                  {w.latitude.toFixed(4)}, {w.longitude.toFixed(4)}
+                  GPS: {w.latitude.toFixed(4)}, {w.longitude.toFixed(4)}
                 </div>
               ) : (
                 <div style={styles.cardCoordsMissing}>
                   <MapPin size={11} />
-                  No coordinates set
+                  No GPS coordinates set
                 </div>
               )}
             </div>
@@ -171,61 +195,73 @@ const Warehouses = () => {
               </button>
             </div>
             <form onSubmit={handleSubmit}>
-              <label style={styles.label}>Name</label>
+              <label style={styles.label}>Warehouse Facility Name</label>
               <input
                 style={styles.input}
+                placeholder="e.g. Hyderabad Central Depot"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 required
               />
 
-              <label style={styles.label}>Address</label>
+              <label style={styles.label}>Area / Address</label>
               <input
                 style={styles.input}
+                placeholder="e.g. Begumpet Industrial Zone, Hyderabad"
                 value={form.address}
                 onChange={(e) => setForm({ ...form, address: e.target.value })}
+                required
               />
 
-              <label style={styles.label}>Capacity</label>
+              <label style={styles.label}>Maximum Storage Capacity (Units)</label>
               <input
                 style={styles.input}
                 type="number"
                 min="0"
+                placeholder="e.g. 10000"
                 value={form.capacity}
                 onChange={(e) => setForm({ ...form, capacity: e.target.value })}
               />
 
+              <div style={styles.coordHeader}>
+                <label style={{ ...styles.label, margin: 0 }}>Coordinates (For Routing)</label>
+                <button
+                  type="button"
+                  style={styles.detectBtn}
+                  onClick={handleDetectLocation}
+                  disabled={detectingLocation}
+                >
+                  <Navigation size={12} />
+                  <span>{detectingLocation ? "Detecting..." : "Auto-Detect My GPS"}</span>
+                </button>
+              </div>
+
               <div style={styles.coordRow}>
                 <div style={styles.coordCol}>
-                  <label style={styles.label}>Latitude</label>
                   <input
                     style={styles.input}
                     type="number"
                     step="any"
                     min="-90"
                     max="90"
-                    placeholder="e.g. 17.3850"
+                    placeholder="Latitude"
                     value={form.latitude}
                     onChange={(e) => setForm({ ...form, latitude: e.target.value })}
                   />
                 </div>
                 <div style={styles.coordCol}>
-                  <label style={styles.label}>Longitude</label>
                   <input
                     style={styles.input}
                     type="number"
                     step="any"
                     min="-180"
                     max="180"
-                    placeholder="e.g. 78.4867"
+                    placeholder="Longitude"
                     value={form.longitude}
                     onChange={(e) => setForm({ ...form, longitude: e.target.value })}
                   />
                 </div>
               </div>
-              <p style={styles.coordHint}>
-                Optional — used for distance-based fulfillment routing. Leave blank if unknown.
-              </p>
 
               <button style={styles.submitBtn} type="submit" disabled={saving}>
                 {saving ? "Saving..." : editingId ? "Save Changes" : "Create Warehouse"}
@@ -239,162 +275,59 @@ const Warehouses = () => {
 };
 
 const styles = {
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: "24px",
-  },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px" },
   title: { fontSize: "22px", fontWeight: 700, color: "#111827", margin: 0 },
   subtitle: { fontSize: "14px", color: "#64748b", marginTop: "4px" },
   primaryBtn: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    padding: "10px 16px",
-    borderRadius: "8px",
-    border: "none",
-    background: "linear-gradient(135deg, #ef4444, #f59e0b)",
-    color: "#fff",
-    fontSize: "13px",
-    fontWeight: 600,
-    cursor: "pointer",
+    display: "flex", alignItems: "center", gap: "8px", padding: "10px 16px", borderRadius: "8px",
+    border: "none", background: "linear-gradient(135deg, #ef4444, #f59e0b)", color: "#fff",
+    fontSize: "13px", fontWeight: 600, cursor: "pointer",
   },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-    gap: "16px",
-  },
-  card: {
-    background: "#fff",
-    borderRadius: "12px",
-    padding: "18px",
-    border: "1px solid #e5e7eb",
-  },
-  cardTop: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "12px",
-  },
+  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: "16px" },
+  card: { background: "#fff", borderRadius: "12px", padding: "18px", border: "1px solid #e5e7eb" },
+  cardTop: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" },
   cardIcon: {
-    width: "38px",
-    height: "38px",
-    borderRadius: "9px",
-    background: "linear-gradient(135deg, #ef4444, #f59e0b)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    width: "38px", height: "38px", borderRadius: "9px", background: "linear-gradient(135deg, #ef4444, #f59e0b)",
+    display: "flex", alignItems: "center", justifyContent: "center",
   },
   cardActions: { display: "flex", gap: "6px" },
   iconBtn: {
-    width: "28px",
-    height: "28px",
-    borderRadius: "6px",
-    border: "1px solid #e5e7eb",
-    background: "#fff",
-    color: "#64748b",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
+    width: "28px", height: "28px", borderRadius: "6px", border: "1px solid #e5e7eb",
+    background: "#fff", color: "#64748b", display: "flex", alignItems: "center",
+    justifyContent: "center", cursor: "pointer",
   },
   cardName: { fontSize: "15px", fontWeight: 700, color: "#111827" },
   cardAddress: { fontSize: "13px", color: "#64748b", marginTop: "4px" },
   cardCapacity: { fontSize: "12px", color: "#94a3b8", marginTop: "8px" },
-  cardCoords: {
-    display: "flex",
-    alignItems: "center",
-    gap: "4px",
-    fontSize: "11px",
-    color: "#16a34a",
-    marginTop: "6px",
-  },
-  cardCoordsMissing: {
-    display: "flex",
-    alignItems: "center",
-    gap: "4px",
-    fontSize: "11px",
-    color: "#cbd5e1",
-    marginTop: "6px",
-  },
-  section: {
-    background: "#fff",
-    borderRadius: "12px",
-    padding: "20px",
-    border: "1px solid #e5e7eb",
-  },
+  cardCoords: { display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", color: "#16a34a", marginTop: "6px" },
+  cardCoordsMissing: { display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", color: "#cbd5e1", marginTop: "6px" },
+  section: { background: "#fff", borderRadius: "12px", padding: "20px", border: "1px solid #e5e7eb" },
   emptyText: { fontSize: "13px", color: "#94a3b8" },
   loadingText: { padding: "40px", color: "#94a3b8", fontSize: "14px" },
   overlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(15, 23, 42, 0.5)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 50,
+    position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.5)", display: "flex",
+    alignItems: "center", justifyContent: "center", zIndex: 50,
   },
-  modal: {
-    background: "#fff",
-    borderRadius: "14px",
-    padding: "24px",
-    width: "380px",
-    maxWidth: "90vw",
-  },
-  modalHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "16px",
-  },
+  modal: { background: "#fff", borderRadius: "14px", padding: "24px", width: "400px", maxWidth: "90vw" },
+  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" },
   modalTitle: { fontSize: "16px", fontWeight: 700, color: "#111827", margin: 0 },
-  closeBtn: {
-    border: "none",
-    background: "transparent",
-    color: "#94a3b8",
-    cursor: "pointer",
-  },
-  label: {
-    display: "block",
-    fontSize: "12px",
-    fontWeight: 600,
-    color: "#475569",
-    marginBottom: "6px",
-    marginTop: "12px",
+  closeBtn: { border: "none", background: "transparent", color: "#94a3b8", cursor: "pointer" },
+  label: { display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px", marginTop: "12px" },
+  coordHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px", marginBottom: "6px" },
+  detectBtn: {
+    display: "flex", alignItems: "center", gap: "4px", background: "transparent", border: "none",
+    color: "#ea580c", fontSize: "11px", fontWeight: 600, cursor: "pointer",
   },
   input: {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: "8px",
-    border: "1px solid #e2e8f0",
-    fontSize: "14px",
-    boxSizing: "border-box",
+    width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #e2e8f0",
+    fontSize: "14px", boxSizing: "border-box",
   },
-  coordRow: {
-    display: "flex",
-    gap: "10px",
-  },
-  coordCol: {
-    flex: 1,
-  },
-  coordHint: {
-    fontSize: "11px",
-    color: "#94a3b8",
-    marginTop: "6px",
-    marginBottom: 0,
-  },
+  coordRow: { display: "flex", gap: "10px" },
+  coordCol: { flex: 1 },
   submitBtn: {
-    width: "100%",
-    marginTop: "20px",
-    padding: "11px",
-    borderRadius: "8px",
-    border: "none",
-    background: "linear-gradient(135deg, #ef4444, #f59e0b)",
-    color: "#fff",
-    fontSize: "14px",
-    fontWeight: 600,
-    cursor: "pointer",
+    width: "100%", marginTop: "20px", padding: "11px", borderRadius: "8px", border: "none",
+    background: "linear-gradient(135deg, #ef4444, #f59e0b)", color: "#fff", fontSize: "14px",
+    fontWeight: 600, cursor: "pointer",
   },
 };
 

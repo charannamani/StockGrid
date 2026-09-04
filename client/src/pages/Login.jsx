@@ -67,10 +67,6 @@ const Login = () => {
               />
             </div>
 
-            <div style={styles.forgotRow}>
-              <span style={styles.forgotLink}>Forgot Password?</span>
-            </div>
-
             <button type="submit" disabled={loading} style={styles.button}>
               {loading ? "Logging in..." : "Log In"}
             </button>
@@ -169,15 +165,6 @@ const styles = {
     outline: "none",
     boxSizing: "border-box",
   },
-  forgotRow: {
-    textAlign: "right",
-    marginBottom: "20px",
-  },
-  forgotLink: {
-    fontSize: "13px",
-    color: "#f97316",
-    cursor: "pointer",
-  },
   button: {
     width: "100%",
     padding: "14px",
@@ -188,6 +175,7 @@ const styles = {
     fontSize: "15px",
     fontWeight: 700,
     cursor: "pointer",
+    marginTop: "8px",
   },
   footerText: {
     textAlign: "center",

@@ -6,6 +6,7 @@ const cors = require("cors");
 const connectDB = require("./config/db");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const { generalLimiter } = require("./middleware/rateLimiter");
+const { protect, adminOnly } = require("./middleware/authMiddleware");
 
 connectDB();
 
@@ -18,14 +19,12 @@ app.use(generalLimiter);
 require("./workers/stockWorker");
 
 app.use("/api/auth", require("./routes/authRoutes"));
-app.use("/api/users", require("./routes/authRoutes"));
 app.use("/api/products", require("./routes/productRoutes"));
 app.use("/api/warehouses", require("./routes/warehouseRoutes"));
+app.use("/api/stock", require("./routes/stockRoutes"));
 app.use("/api/movements", require("./routes/movementRoutes"));
 app.use("/api/apikeys", require("./routes/apiKeyRoutes"));
-
-app.use("/api/stocks", require("./routes/stockRoutes"));
-app.use("/api/stock", require("./routes/stockRoutes"));
+app.use("/api/webhooks", require("./routes/webhookRoutes"));
 
 const { createBullBoard } = require("@bull-board/api");
 const { BullMQAdapter } = require("@bull-board/api/bullMQAdapter");
@@ -39,8 +38,8 @@ createBullBoard({
   queues: [new BullMQAdapter(stockQueue)],
   serverAdapter: serverAdapter,
 });
-app.use("/api/webhooks", require("./routes/webhookRoutes"));
-app.use("/admin/queues", serverAdapter.getRouter());
+
+app.use("/admin/queues", protect, adminOnly, serverAdapter.getRouter());
 
 app.get("/", (req, res) => {
   res.send("StockGrid API Engine Running Smoothly...");
