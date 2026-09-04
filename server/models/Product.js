@@ -24,6 +24,11 @@ const productSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    defaultThreshold: {
+      type: Number,
+      default: 10,
+      min: 0,
+    },
     description: {
       type: String,
       trim: true,

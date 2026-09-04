@@ -34,7 +34,12 @@ const getStockLevels = async (req, res, next) => {
       .populate("warehouse", "name address latitude longitude isActive")
       .lean();
 
-    const validStock = stock.filter((entry) => entry.product && entry.warehouse && entry.warehouse.isActive !== false);
+    const validStock = stock
+      .filter((entry) => entry.product && entry.warehouse && entry.warehouse.isActive !== false)
+      .map((entry) => ({
+        ...entry,
+        availableQuantity: Math.max(0, entry.currentQuantity - (entry.reservedQuantity || 0)),
+      }));
 
     res.json(validStock);
   } catch (error) {
@@ -59,7 +64,13 @@ const getStockByWarehouse = async (req, res, next) => {
       return res.json({ stock: [], totalOccupancy: 0, capacity: null, spaceLeft: null, isOverCapacity: false });
     }
 
-    const validStock = stock.filter((entry) => entry.product);
+    const validStock = stock
+      .filter((entry) => entry.product)
+      .map((entry) => ({
+        ...entry,
+        availableQuantity: Math.max(0, entry.currentQuantity - (entry.reservedQuantity || 0)),
+      }));
+
     const totalOccupancy = validStock.reduce((sum, entry) => sum + (entry.currentQuantity || 0), 0);
     const capacity = warehouse.capacity != null ? warehouse.capacity : null;
     const spaceLeft = capacity != null ? capacity - totalOccupancy : null;
@@ -82,17 +93,24 @@ const getStockByProduct = async (req, res, next) => {
     const { productId } = req.params;
 
     if (!productId || !mongoose.Types.ObjectId.isValid(productId)) {
-      return res.json({ totalQuantity: 0, byWarehouse: [] });
+      return res.json({ totalQuantity: 0, totalAvailable: 0, byWarehouse: [] });
     }
 
     const stock = await Stock.find({ product: productId })
       .populate("warehouse", "name address latitude longitude isActive")
       .lean();
 
-    const validStock = stock.filter((entry) => entry.warehouse && entry.warehouse.isActive !== false);
-    const totalQuantity = validStock.reduce((sum, entry) => sum + (entry.currentQuantity || 0), 0);
+    const validStock = stock
+      .filter((entry) => entry.warehouse && entry.warehouse.isActive !== false)
+      .map((entry) => ({
+        ...entry,
+        availableQuantity: Math.max(0, entry.currentQuantity - (entry.reservedQuantity || 0)),
+      }));
 
-    res.json({ totalQuantity, byWarehouse: validStock });
+    const totalQuantity = validStock.reduce((sum, entry) => sum + (entry.currentQuantity || 0), 0);
+    const totalAvailable = validStock.reduce((sum, entry) => sum + (entry.availableQuantity || 0), 0);
+
+    res.json({ totalQuantity, totalAvailable, byWarehouse: validStock });
   } catch (error) {
     next(error);
   }
@@ -127,7 +145,13 @@ const checkAvailability = async (req, res, next) => {
       .populate("warehouse", "name address latitude longitude isActive")
       .lean();
 
-    let validEntries = stockEntries.filter((entry) => entry.warehouse && entry.warehouse.isActive !== false);
+    let validEntries = stockEntries
+      .filter((entry) => entry.warehouse && entry.warehouse.isActive !== false)
+      .map((entry) => ({
+        ...entry,
+        effectiveQuantity: Math.max(0, entry.currentQuantity - (entry.reservedQuantity || 0)),
+      }))
+      .filter((entry) => entry.effectiveQuantity > 0);
 
     const hasDestination = destLat !== undefined && destLng !== undefined && destLat !== "" && destLng !== "";
     const destLatNum = Number(destLat);
@@ -160,11 +184,11 @@ const checkAvailability = async (req, res, next) => {
     }
 
     if (!usingCostOptimal) {
-      validEntries = validEntries.sort((a, b) => b.currentQuantity - a.currentQuantity);
+      validEntries = validEntries.sort((a, b) => b.effectiveQuantity - a.effectiveQuantity);
     }
 
     if (usingCostOptimal) {
-      const singleSource = validEntries.find((entry) => entry.currentQuantity >= requestedQty);
+      const singleSource = validEntries.find((entry) => entry.effectiveQuantity >= requestedQty);
       if (singleSource) {
         return res.json({
           fulfillable: true,
@@ -172,14 +196,14 @@ const checkAvailability = async (req, res, next) => {
           options: [
             {
               warehouse: singleSource.warehouse,
-              quantityAvailable: singleSource.currentQuantity,
+              quantityAvailable: singleSource.effectiveQuantity,
               distanceKm: singleSource.distanceKm,
             },
           ],
         });
       }
     } else {
-      const singleSource = validEntries.find((entry) => entry.currentQuantity >= requestedQty);
+      const singleSource = validEntries.find((entry) => entry.effectiveQuantity >= requestedQty);
       if (singleSource) {
         return res.json({
           fulfillable: true,
@@ -187,7 +211,7 @@ const checkAvailability = async (req, res, next) => {
           options: [
             {
               warehouse: singleSource.warehouse,
-              quantityAvailable: singleSource.currentQuantity,
+              quantityAvailable: singleSource.effectiveQuantity,
             },
           ],
         });
@@ -199,10 +223,10 @@ const checkAvailability = async (req, res, next) => {
 
     for (const entry of validEntries) {
       if (remaining <= 0) break;
-      const take = Math.min(entry.currentQuantity, remaining);
+      const take = Math.min(entry.effectiveQuantity, remaining);
       combination.push({
         warehouse: entry.warehouse,
-        quantityAvailable: entry.currentQuantity,
+        quantityAvailable: entry.effectiveQuantity,
         quantityToUse: take,
         ...(usingCostOptimal ? { distanceKm: entry.distanceKm } : {}),
       });
@@ -217,7 +241,7 @@ const checkAvailability = async (req, res, next) => {
       });
     }
 
-    const totalAvailable = validEntries.reduce((sum, e) => sum + e.currentQuantity, 0);
+    const totalAvailable = validEntries.reduce((sum, e) => sum + e.effectiveQuantity, 0);
 
     return res.json({
       fulfillable: false,

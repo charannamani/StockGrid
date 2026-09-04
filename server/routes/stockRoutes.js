@@ -6,14 +6,21 @@ const {
   getStockByProduct,
   checkAvailability,
 } = require("../controllers/stockController");
+const {
+  reserveStock,
+  confirmReservation,
+  releaseReservation,
+} = require("../controllers/reservationController");
 const { flexibleAuth } = require("../middleware/authMiddleware");
-const cache = require("../middleware/cacheMiddleware");
 
-router.use(flexibleAuth);
+router.get("/", flexibleAuth, getStockLevels);
+router.get("/availability", flexibleAuth, checkAvailability);
 
-router.get("/", cache("stocks", 300), getStockLevels);
-router.get("/availability", cache("availability", 60), checkAvailability);
-router.get("/warehouse/:warehouseId", cache("stock_wh", 300), getStockByWarehouse);
-router.get("/product/:productId", cache("stock_prod", 300), getStockByProduct);
+router.post("/reserve", flexibleAuth, reserveStock);
+router.post("/confirm", flexibleAuth, confirmReservation);
+router.post("/release", flexibleAuth, releaseReservation);
+
+router.get("/warehouse/:warehouseId", flexibleAuth, getStockByWarehouse);
+router.get("/product/:productId", flexibleAuth, getStockByProduct);
 
 module.exports = router;

@@ -1,15 +1,22 @@
 const express = require("express");
 const router = express.Router();
 const {
+  getApiKeys,
   generateApiKey,
-  listApiKeys,
+  updateApiKey,
   revokeApiKey,
 } = require("../controllers/apiKeyController");
 const { protect, adminOnly } = require("../middleware/authMiddleware");
-const { apiKeyLimiter } = require("../middleware/rateLimiter");
 
-router.get("/", protect, adminOnly, listApiKeys);
-router.post("/", protect, adminOnly, apiKeyLimiter, generateApiKey);
-router.delete("/:id", protect, adminOnly, revokeApiKey);
+router.use(protect);
+router.use(adminOnly);
+
+router.route("/")
+  .get(getApiKeys)
+  .post(generateApiKey);
+
+router.route("/:id")
+  .put(updateApiKey)
+  .delete(revokeApiKey);
 
 module.exports = router;

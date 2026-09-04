@@ -7,15 +7,14 @@ import {
   X,
   Search,
   Tag,
-  DollarSign,
-  FileText,
   SlidersHorizontal,
+  AlertTriangle,
 } from "lucide-react";
 import API from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 
-const emptyForm = { name: "", sku: "", category: "", unitCost: "", description: "" };
+const emptyForm = { name: "", sku: "", category: "", unitCost: "", defaultThreshold: "10", description: "" };
 
 const Products = () => {
   const { user } = useAuth();
@@ -72,6 +71,7 @@ const Products = () => {
       sku: p.sku,
       category: p.category,
       unitCost: p.unitCost,
+      defaultThreshold: String(p.defaultThreshold ?? 10),
       description: p.description || "",
     });
     setShowForm(true);
@@ -92,6 +92,7 @@ const Products = () => {
         sku: form.sku.trim().toUpperCase(),
         category: form.category.trim(),
         unitCost: Number(form.unitCost),
+        defaultThreshold: Number(form.defaultThreshold || 10),
         description: form.description,
       };
 
@@ -101,7 +102,7 @@ const Products = () => {
         toast.success("Product updated successfully");
       } else {
         await API.post("/products", payload);
-        toast.success("Product created successfully");
+        toast.success("Product registered in catalog");
       }
 
       closeForm();
@@ -114,24 +115,23 @@ const Products = () => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Permanently delete this product? This action cannot be undone.")) return;
+    if (!window.confirm("Deactivate this product from active catalog?")) return;
     try {
       await API.delete(`/products/${id}`);
-      toast.success("Product removed");
+      toast.success("Product deactivated");
       fetchProducts(search);
     } catch (err) {
-      toast.error(err.response?.data?.message || "Could not delete product");
+      toast.error(err.response?.data?.message || "Could not deactivate product");
     }
   };
 
   return (
     <div style={styles.container}>
-      {/* Page Header */}
       <div style={styles.header}>
         <div>
-          <h1 style={styles.title}>Product Catalog</h1>
+          <h1 style={styles.title}>Global Product Catalog</h1>
           <p style={styles.subtitle}>
-            Manage global product SKUs and unit valuation across all warehouses.
+            Register SKUs, unit costs, and safety stock thresholds across warehouse networks.
           </p>
         </div>
         {isAdmin && (
@@ -142,7 +142,6 @@ const Products = () => {
         )}
       </div>
 
-      {/* Control Bar: Search & Category Filter */}
       <div style={styles.controlBar}>
         <div style={styles.searchWrapper}>
           <Search size={16} color="#94a3b8" />
@@ -171,14 +170,13 @@ const Products = () => {
         </div>
       </div>
 
-      {/* Catalog Table */}
       <div style={styles.tableCard}>
         {loading ? (
           <div style={styles.emptyState}>Loading catalog data...</div>
         ) : filteredProducts.length === 0 ? (
           <div style={styles.emptyState}>
             <Package size={32} color="#94a3b8" />
-            <p style={styles.emptyText}>No matching products found in catalog.</p>
+            <p style={styles.emptyText}>No matching products found.</p>
           </div>
         ) : (
           <div style={styles.tableWrapper}>
@@ -187,6 +185,7 @@ const Products = () => {
               <span>SKU</span>
               <span>CATEGORY</span>
               <span style={{ textAlign: "right" }}>UNIT COST</span>
+              <span style={{ textAlign: "right" }}>ALERT THRESHOLD</span>
               {isAdmin && <span style={{ textAlign: "right" }}>ACTIONS</span>}
             </div>
 
@@ -219,6 +218,13 @@ const Products = () => {
                   ${Number(p.unitCost).toFixed(2)}
                 </div>
 
+                <div style={styles.thresholdCell}>
+                  <span style={styles.thresholdBadge}>
+                    <AlertTriangle size={11} style={{ marginRight: "4px" }} />
+                    Min {p.defaultThreshold ?? 10} units
+                  </span>
+                </div>
+
                 {isAdmin && (
                   <div style={styles.rowActions}>
                     <button
@@ -231,7 +237,7 @@ const Products = () => {
                     <button
                       style={styles.deleteIconBtn}
                       onClick={() => handleDelete(p._id)}
-                      title="Delete Product"
+                      title="Deactivate Product"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -243,19 +249,18 @@ const Products = () => {
         )}
       </div>
 
-      {/* Create / Edit Modal Drawer */}
       {showForm && (
         <div style={styles.overlay} onClick={closeForm}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <div>
                 <h2 style={styles.modalTitle}>
-                  {editingId ? "Edit Product Details" : "Register New Product"}
+                  {editingId ? "Edit Product SKU" : "Register Product in Catalog"}
                 </h2>
                 <p style={styles.modalSubtitle}>
                   {editingId
-                    ? "Update pricing, category, and metadata."
-                    : "Add a new SKU to global warehouse tracking."}
+                    ? "Adjust valuation, category, and minimum stock threshold."
+                    : "Create master record. Stock balance starts at 0 until inbound arrival."}
                 </p>
               </div>
               <button style={styles.closeBtn} onClick={closeForm}>
@@ -268,7 +273,7 @@ const Products = () => {
                 <label style={styles.label}>Product Name</label>
                 <input
                   style={styles.input}
-                  placeholder="e.g., Ergonomic Mechanical Keyboard"
+                  placeholder="e.g. Ergonomic Office Chair"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   required
@@ -277,13 +282,13 @@ const Products = () => {
 
               <div style={styles.formRow}>
                 <div>
-                  <label style={styles.label}>SKU Code</label>
+                  <label style={styles.label}>SKU Identifier</label>
                   <input
                     style={{
                       ...styles.input,
                       ...(editingId ? styles.disabledInput : {}),
                     }}
-                    placeholder="KEY-KB-001"
+                    placeholder="CHR-ERG-01"
                     value={form.sku}
                     onChange={(e) => setForm({ ...form, sku: e.target.value })}
                     required
@@ -295,7 +300,7 @@ const Products = () => {
                   <label style={styles.label}>Category</label>
                   <input
                     style={styles.input}
-                    placeholder="Electronics"
+                    placeholder="Furniture"
                     value={form.category}
                     onChange={(e) => setForm({ ...form, category: e.target.value })}
                     required
@@ -303,25 +308,40 @@ const Products = () => {
                 </div>
               </div>
 
-              <div>
-                <label style={styles.label}>Unit Cost ($)</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="49.99"
-                  value={form.unitCost}
-                  onChange={(e) => setForm({ ...form, unitCost: e.target.value })}
-                  required
-                />
+              <div style={styles.formRow}>
+                <div>
+                  <label style={styles.label}>Unit Cost ($)</label>
+                  <input
+                    style={styles.input}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="89.99"
+                    value={form.unitCost}
+                    onChange={(e) => setForm({ ...form, unitCost: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={styles.label}>Low Stock Threshold</label>
+                  <input
+                    style={styles.input}
+                    type="number"
+                    min="0"
+                    placeholder="10"
+                    value={form.defaultThreshold}
+                    onChange={(e) => setForm({ ...form, defaultThreshold: e.target.value })}
+                    required
+                  />
+                </div>
               </div>
 
               <div>
                 <label style={styles.label}>Description (Optional)</label>
                 <textarea
-                  style={{ ...styles.input, resize: "vertical", minHeight: "80px" }}
-                  placeholder="Brief operational specifications..."
+                  style={{ ...styles.input, resize: "vertical", minHeight: "70px" }}
+                  placeholder="Operational handling guidelines..."
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                 />
@@ -344,7 +364,7 @@ const Products = () => {
                     ? "Saving..."
                     : editingId
                     ? "Save Changes"
-                    : "Create SKU"}
+                    : "Register Product"}
                 </button>
               </div>
             </form>
@@ -379,7 +399,6 @@ const styles = {
     fontSize: "13px",
     fontWeight: 600,
     cursor: "pointer",
-    boxShadow: "0 2px 8px rgba(239, 68, 68, 0.25)",
   },
   controlBar: {
     display: "flex",
@@ -416,12 +435,11 @@ const styles = {
     borderRadius: "14px",
     border: "1px solid #e2e8f0",
     overflow: "hidden",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
   },
   tableWrapper: { display: "flex", flexDirection: "column" },
   tableHeaderRow: {
     display: "grid",
-    gridTemplateColumns: "2.5fr 1.2fr 1.2fr 1fr 1fr",
+    gridTemplateColumns: "2.2fr 1fr 1fr 0.9fr 1fr 0.8fr",
     padding: "12px 20px",
     background: "#f8fafc",
     fontSize: "11px",
@@ -432,7 +450,7 @@ const styles = {
   },
   tableRow: {
     display: "grid",
-    gridTemplateColumns: "2.5fr 1.2fr 1.2fr 1fr 1fr",
+    gridTemplateColumns: "2.2fr 1fr 1fr 0.9fr 1fr 0.8fr",
     alignItems: "center",
     padding: "14px 20px",
     borderBottom: "1px solid #f1f5f9",
@@ -473,6 +491,18 @@ const styles = {
     border: "1px solid #e2e8f0",
   },
   costCell: { fontWeight: 700, color: "#0f172a", textAlign: "right" },
+  thresholdCell: { textAlign: "right" },
+  thresholdBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    fontSize: "11px",
+    fontWeight: 600,
+    color: "#b45309",
+    background: "#fffbeb",
+    border: "1px solid #fde68a",
+    padding: "3px 8px",
+    borderRadius: "6px",
+  },
   rowActions: { display: "flex", justifyContent: "flex-end", gap: "8px" },
   iconBtn: {
     width: "30px",
@@ -504,7 +534,6 @@ const styles = {
     position: "fixed",
     inset: 0,
     background: "rgba(15, 23, 42, 0.6)",
-    backdropFilter: "blur(4px)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -516,7 +545,6 @@ const styles = {
     padding: "28px",
     width: "440px",
     maxWidth: "92vw",
-    boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)",
   },
   modalHeader: { display: "flex", justifyContent: "space-between", marginBottom: "20px" },
   modalTitle: { fontSize: "18px", fontWeight: 700, color: "#0f172a", margin: 0 },

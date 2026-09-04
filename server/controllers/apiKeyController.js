@@ -1,45 +1,67 @@
+const crypto = require("crypto");
 const ApiKey = require("../models/ApiKey");
+
+const getApiKeys = async (req, res, next) => {
+  try {
+    const keys = await ApiKey.find({ isActive: true })
+      .select("-keySecret")
+      .populate("createdBy", "name email")
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json(keys);
+  } catch (error) {
+    next(error);
+  }
+};
 
 const generateApiKey = async (req, res, next) => {
   try {
     const { name, callbackUrl } = req.body;
 
-    if (!name) {
+    if (!name || name.trim() === "") {
       res.status(400);
-      return next(new Error("A name for the API key is required"));
+      return next(new Error("Key name is required"));
     }
 
-    const rawKey = ApiKey.generateRawKey();
-    const hashedKey = ApiKey.hashKey(rawKey);
+    const rawKey = `sg_${crypto.randomBytes(24).toString("hex")}`;
+    const keySecret = crypto.randomBytes(32).toString("hex");
 
-    const apiKey = await ApiKey.create({
-      name,
-      key: hashedKey,
-      callbackUrl: callbackUrl || undefined,
+    const newKey = await ApiKey.create({
+      name: name.trim(),
+      key: rawKey,
+      keySecret,
+      callbackUrl: callbackUrl ? callbackUrl.trim() : undefined,
       createdBy: req.user._id,
     });
 
     res.status(201).json({
-      _id: apiKey._id,
-      name: apiKey.name,
-      callbackUrl: apiKey.callbackUrl || null,
-      rawKey,
-      message: "Save this key now — it will not be shown again",
+      _id: newKey._id,
+      name: newKey.name,
+      key: rawKey,
+      keySecret,
+      callbackUrl: newKey.callbackUrl,
+      createdAt: newKey.createdAt,
     });
   } catch (error) {
-    if (error.name === "ValidationError") {
-      res.status(400);
-    }
     next(error);
   }
 };
 
-const listApiKeys = async (req, res, next) => {
+const updateApiKey = async (req, res, next) => {
   try {
-    const keys = await ApiKey.find()
-      .select("-key")
-      .populate("createdBy", "name email");
-    res.json(keys);
+    const { callbackUrl, name } = req.body;
+    const apiKey = await ApiKey.findById(req.params.id);
+
+    if (!apiKey) {
+      res.status(404);
+      return next(new Error("API key not found"));
+    }
+
+    if (name) apiKey.name = name.trim();
+    if (callbackUrl !== undefined) apiKey.callbackUrl = callbackUrl.trim();
+
+    await apiKey.save();
+    res.json(apiKey);
   } catch (error) {
     next(error);
   }
@@ -56,10 +78,15 @@ const revokeApiKey = async (req, res, next) => {
     apiKey.isActive = false;
     await apiKey.save();
 
-    res.json({ message: "API key revoked" });
+    res.json({ message: "API key revoked successfully" });
   } catch (error) {
     next(error);
   }
 };
 
-module.exports = { generateApiKey, listApiKeys, revokeApiKey };
+module.exports = {
+  getApiKeys,
+  generateApiKey,
+  updateApiKey,
+  revokeApiKey,
+};

@@ -15,18 +15,24 @@ const stockSchema = new mongoose.Schema(
     currentQuantity: {
       type: Number,
       required: true,
-      default: 0,
       min: 0,
+      default: 0,
+    },
+    reservedQuantity: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
     },
     lowStockThreshold: {
       type: Number,
       default: 10,
+      min: 0,
     },
   },
   { timestamps: true }
 );
 
 stockSchema.index({ product: 1, warehouse: 1 }, { unique: true });
-stockSchema.index({ warehouse: 1, currentQuantity: 1 });
 
 module.exports = mongoose.model("Stock", stockSchema);

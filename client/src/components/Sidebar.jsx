@@ -6,7 +6,6 @@ import {
   Package,
   Boxes,
   ArrowLeftRight,
-  ClipboardCheck,
   KeyRound,
   LogOut,
 } from "lucide-react";
@@ -16,9 +15,8 @@ const navItems = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/warehouses", label: "Warehouses", icon: Warehouse },
   { to: "/products", label: "Products", icon: Package },
-  { to: "/stock", label: "Stock", icon: Boxes },
+  { to: "/stock", label: "Inventory & Router", icon: Boxes },
   { to: "/movements", label: "Movements", icon: ArrowLeftRight },
-  { to: "/availability", label: "Availability", icon: ClipboardCheck },
   { to: "/api-keys", label: "API Keys", icon: KeyRound, adminOnly: true },
 ];
 
@@ -39,26 +37,26 @@ const Sidebar = () => {
         </div>
         <div>
           <div style={styles.brandName}>STOCKGRID</div>
-          <div style={styles.brandSub}>Inventory Management</div>
+          <div style={styles.brandSub}>Warehouse Network</div>
         </div>
       </div>
 
       <nav style={styles.nav}>
         {navItems
-  .filter((item) => !item.adminOnly || user?.role === "admin")
-  .map(({ to, label, icon: Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            style={({ isActive }) => ({
-              ...styles.navLink,
-              ...(isActive ? styles.navLinkActive : {}),
-            })}
-          >
-            <Icon size={18} />
-            <span>{label}</span>
-          </NavLink>
-        ))}
+          .filter((item) => !item.adminOnly || user?.role === "admin")
+          .map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              style={({ isActive }) => ({
+                ...styles.navLink,
+                ...(isActive ? styles.navLinkActive : {}),
+              })}
+            >
+              <Icon size={18} />
+              <span>{label}</span>
+            </NavLink>
+          ))}
       </nav>
 
       <div style={styles.footer}>

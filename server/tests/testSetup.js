@@ -3,6 +3,7 @@ const { MongoMemoryReplSet } = require("mongodb-memory-server");
 const mongoose = require("mongoose");
 const { redisConnection } = require("../config/redis");
 const stockQueue = require("../queues/stockQueue");
+const reservationQueue = require("../queues/reservationQueue");
 
 jest.setTimeout(60000);
 
@@ -17,19 +18,23 @@ const connect = async () => {
 };
 
 const closeDatabase = async () => {
-  await mongoose.connection.dropDatabase();
-  await mongoose.connection.close();
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.connection.dropDatabase();
+    await mongoose.connection.close();
+  }
   
   if (mongoServer) {
     await mongoServer.stop();
   }
 
-  // Close active BullMQ queue connections
   if (stockQueue) {
     await stockQueue.close();
   }
 
-  // Close active Redis connection
+  if (reservationQueue) {
+    await reservationQueue.close();
+  }
+
   if (redisConnection) {
     await redisConnection.quit();
   }

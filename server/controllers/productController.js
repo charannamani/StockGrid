@@ -8,7 +8,7 @@ const getProducts = async (req, res, next) => {
     if (category) filter.category = category;
     if (search) filter.name = { $regex: search, $options: "i" };
 
-    const products = await Product.find(filter).lean(); // Optimization: Plain JS objects
+    const products = await Product.find(filter).lean();
     res.json(products);
   } catch (error) {
     next(error);
@@ -17,7 +17,7 @@ const getProducts = async (req, res, next) => {
 
 const getProductById = async (req, res, next) => {
   try {
-    const product = await Product.findById(req.params.id).lean(); // Optimization
+    const product = await Product.findById(req.params.id).lean();
     if (!product) {
       res.status(404);
       return next(new Error("Product not found"));
@@ -30,7 +30,7 @@ const getProductById = async (req, res, next) => {
 
 const createProduct = async (req, res, next) => {
   try {
-    const { name, sku, category, unitCost, description } = req.body;
+    const { name, sku, category, unitCost, defaultThreshold, description } = req.body;
 
     const existingProduct = await Product.findOne({ sku });
     if (existingProduct) {
@@ -43,6 +43,7 @@ const createProduct = async (req, res, next) => {
       sku,
       category,
       unitCost,
+      defaultThreshold: defaultThreshold !== undefined && defaultThreshold !== "" ? Number(defaultThreshold) : 10,
       description,
     });
 
@@ -54,7 +55,7 @@ const createProduct = async (req, res, next) => {
 
 const updateProduct = async (req, res, next) => {
   try {
-    const { name, category, unitCost, description, isActive } = req.body;
+    const { name, category, unitCost, defaultThreshold, description, isActive } = req.body;
 
     const product = await Product.findById(req.params.id);
     if (!product) {
@@ -65,6 +66,7 @@ const updateProduct = async (req, res, next) => {
     if (name) product.name = name;
     if (category) product.category = category;
     if (unitCost !== undefined) product.unitCost = unitCost;
+    if (defaultThreshold !== undefined && defaultThreshold !== "") product.defaultThreshold = Number(defaultThreshold);
     if (description !== undefined) product.description = description;
     if (isActive !== undefined) product.isActive = isActive;
 
@@ -74,7 +76,6 @@ const updateProduct = async (req, res, next) => {
     next(error);
   }
 };
-
 
 const deleteProduct = async (req, res, next) => {
   try {

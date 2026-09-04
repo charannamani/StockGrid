@@ -5,18 +5,19 @@ const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
-const { generalLimiter } = require("./middleware/rateLimiter");
+const { apiLimiter } = require("./middleware/rateLimiter");
 const { protect, adminOnly } = require("./middleware/authMiddleware");
-
 connectDB();
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use(generalLimiter);
+app.use(apiLimiter);
+
 
 require("./workers/stockWorker");
+require("./workers/reservationWorker");
 
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/products", require("./routes/productRoutes"));

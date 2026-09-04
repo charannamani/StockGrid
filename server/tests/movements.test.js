@@ -31,13 +31,29 @@ const setupAdminAndData = async () => {
   });
   const token = loginRes.body.token;
 
-  const warehouseA = await Warehouse.create({ name: "Warehouse A" });
-  const warehouseB = await Warehouse.create({ name: "Warehouse B" });
+  const warehouseA = await Warehouse.create({
+    name: "Warehouse A",
+    latitude: 17.385,
+    longitude: 78.4867,
+    capacity: 1000,
+    isActive: true,
+  });
+
+  const warehouseB = await Warehouse.create({
+    name: "Warehouse B",
+    latitude: 12.9716,
+    longitude: 77.5946,
+    capacity: 1000,
+    isActive: true,
+  });
+
   const product = await Product.create({
     name: "Test Product",
-    sku: "TEST-001",
+    sku: `TEST-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     category: "Test",
     unitCost: 10,
+    defaultThreshold: 10,
+    isActive: true,
   });
 
   return { token, warehouseA, warehouseB, product };
@@ -65,7 +81,7 @@ describe("Stock Movements", () => {
       .get(`/api/stock/warehouse/${warehouseA._id}`)
       .set("Authorization", `Bearer ${token}`);
 
-    expect(stockRes.body[0].currentQuantity).toBe(100);
+    expect(stockRes.body.stock[0].currentQuantity).toBe(100);
   });
 
   test("outbound movement decreases quantity", async () => {
@@ -87,7 +103,7 @@ describe("Stock Movements", () => {
       .get(`/api/stock/warehouse/${warehouseA._id}`)
       .set("Authorization", `Bearer ${token}`);
 
-    expect(stockRes.body[0].currentQuantity).toBe(70);
+    expect(stockRes.body.stock[0].currentQuantity).toBe(70);
   });
 
   test("rejects outbound movement exceeding current stock and leaves stock unchanged", async () => {
@@ -109,7 +125,7 @@ describe("Stock Movements", () => {
       .get(`/api/stock/warehouse/${warehouseA._id}`)
       .set("Authorization", `Bearer ${token}`);
 
-    expect(stockRes.body[0].currentQuantity).toBe(50);
+    expect(stockRes.body.stock[0].currentQuantity).toBe(50);
   });
 
   test("transfer moves quantity between warehouses and conserves total", async () => {
@@ -157,6 +173,7 @@ describe("Stock Movements", () => {
       .get(`/api/stock/availability?productId=${product._id}&quantity=150`)
       .set("Authorization", `Bearer ${token}`);
 
+    expect(res.status).toBe(200);
     expect(res.body.fulfillable).toBe(true);
     expect(res.body.strategy).toBe("single_warehouse");
   });
@@ -172,6 +189,8 @@ describe("Stock Movements", () => {
     const res = await request(app)
       .get(`/api/stock/availability?productId=${product._id}&quantity=500`)
       .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
     expect(res.body.fulfillable).toBe(false);
     expect(res.body.shortfall).toBe(490);
   });

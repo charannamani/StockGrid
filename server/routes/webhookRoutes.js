@@ -1,9 +1,14 @@
 const express = require("express");
 const router = express.Router();
 const { handleOrderPlaced } = require("../controllers/webhookController");
-const apiKeyAuth = require("../middleware/apiKeyMiddleware");
-const { apiKeyLimiter } = require("../middleware/rateLimiter");
+const { flexibleAuth } = require("../middleware/authMiddleware");
+const idempotencyMiddleware = require("../middleware/idempotencyMiddleware");
 
-router.post("/order-placed", apiKeyAuth, apiKeyLimiter, handleOrderPlaced);
+router.post(
+  "/order-placed",
+  flexibleAuth,
+  idempotencyMiddleware,
+  handleOrderPlaced
+);
 
 module.exports = router;

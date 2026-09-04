@@ -56,7 +56,7 @@ const checkStockThresholdEvents = async (productId, warehouseId, previousQuantit
     const warehouse = await Warehouse.findById(warehouseId).lean();
     if (!product || !warehouse) return;
 
-    const resolvedThreshold = threshold ?? 10;
+    const resolvedThreshold = threshold ?? product.defaultThreshold ?? 10;
     const wasLow = previousQuantity <= resolvedThreshold;
     const isLowNow = newQuantity <= resolvedThreshold;
 
@@ -99,6 +99,9 @@ const recordMovement = async ({ product, warehouse, type, quantity, reason, attr
     throw err;
   }
 
+  const productDoc = await Product.findById(product).lean();
+  const defaultThreshold = productDoc?.defaultThreshold ?? 10;
+
   const session = await mongoose.startSession();
   let updatedStock;
   let movement;
@@ -112,7 +115,10 @@ const recordMovement = async ({ product, warehouse, type, quantity, reason, attr
       if (type === "inbound") {
         updatedStock = await Stock.findOneAndUpdate(
           { product, warehouse },
-          { $inc: { currentQuantity: qty }, $setOnInsert: { product, warehouse } },
+          {
+            $inc: { currentQuantity: qty },
+            $setOnInsert: { product, warehouse, lowStockThreshold: defaultThreshold },
+          },
           { new: true, upsert: true, session }
         );
       } else if (type === "outbound") {
@@ -129,7 +135,10 @@ const recordMovement = async ({ product, warehouse, type, quantity, reason, attr
       } else {
         updatedStock = await Stock.findOneAndUpdate(
           { product, warehouse },
-          { $set: { currentQuantity: qty }, $setOnInsert: { product, warehouse } },
+          {
+            $set: { currentQuantity: qty },
+            $setOnInsert: { product, warehouse, lowStockThreshold: defaultThreshold },
+          },
           { new: true, upsert: true, session }
         );
       }
@@ -178,9 +187,9 @@ const getMovementHistory = async (req, res, next) => {
 
     const movements = await StockMovement.find(filter)
       .populate("product", "name sku")
-      .populate("warehouse", "name")
-      .populate("fromWarehouse", "name")
-      .populate("toWarehouse", "name")
+      .populate("warehouse", "name address")
+      .populate("fromWarehouse", "name address")
+      .populate("toWarehouse", "name address")
       .populate("performedBy", "name email")
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -230,6 +239,9 @@ const transferStock = async (req, res, next) => {
     return next(new Error("Source and destination warehouses cannot be identical"));
   }
 
+  const productDoc = await Product.findById(product).lean();
+  const defaultThreshold = productDoc?.defaultThreshold ?? 10;
+
   const session = await mongoose.startSession();
   let sourceStock;
   let targetStock;
@@ -260,7 +272,10 @@ const transferStock = async (req, res, next) => {
 
       targetStock = await Stock.findOneAndUpdate(
         { product, warehouse: toWarehouse },
-        { $inc: { currentQuantity: qty }, $setOnInsert: { product, warehouse: toWarehouse } },
+        {
+          $inc: { currentQuantity: qty },
+          $setOnInsert: { product, warehouse: toWarehouse, lowStockThreshold: defaultThreshold },
+        },
         { new: true, upsert: true, session }
       );
 

@@ -1,85 +1,80 @@
 const { Worker } = require("bullmq");
-const crypto = require("crypto");
-const { redisConfig } = require("../config/redis");
+const { redisConnection } = require("../config/redis");
 const ApiKey = require("../models/ApiKey");
+const crypto = require("crypto");
 
-const deliverWebhook = async (callbackUrl, eventType, payload) => {
+const buildEnvelope = (eventName, data) => ({
+  eventId: crypto.randomUUID(),
+  event: eventName,
+  timestamp: new Date().toISOString(),
+  data,
+});
+
+const signPayload = (payloadString, secret) => {
+  if (!secret) return "";
+  return crypto
+    .createHmac("sha256", secret)
+    .update(payloadString)
+    .digest("hex");
+};
+
+const dispatchWebhook = async (url, payload, secret) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  const payloadString = JSON.stringify(payload);
+  const signature = signPayload(payloadString, secret);
+
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-
-    const res = await fetch(callbackUrl, {
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Webhook-Event": eventType,
+        "X-Webhook-Event": payload.event,
+        "X-StockGrid-Signature": signature,
       },
-      body: JSON.stringify(payload),
+      body: payloadString,
       signal: controller.signal,
     });
-
-    clearTimeout(timeout);
-    return res.ok;
+    return response.ok;
   } catch (err) {
-    console.error(`[WEBHOOK DELIVERY FAILED] ${callbackUrl}: ${err.message}`);
     return false;
+  } finally {
+    clearTimeout(timeout);
   }
 };
 
 const stockWorker = new Worker(
   "lowStockAlerts",
   async (job) => {
-    const { productId, productName, warehouseId, warehouseName, currentQuantity, threshold } = job.data;
-
-    const eventType = job.name === "backInStock" ? "stock.replenished" : "stock.low";
-    const logLabel = job.name === "backInStock" ? "BACK IN STOCK" : "LOW STOCK ALERT";
-
-    console.log(`\n[QUEUE JOB ${job.id}] Processing ${logLabel.toLowerCase()}...`);
-    console.log(
-      `[${logLabel}] ${productName} in ${warehouseName} is now at ${currentQuantity} (Threshold: ${threshold}).`
-    );
-
-    const eventId = `${job.id}-${crypto.randomBytes(4).toString("hex")}`;
-    const payload = {
-      eventId,
-      event: eventType,
-      productId,
-      productName,
-      warehouseId,
-      warehouseName,
-      currentQuantity,
-      threshold,
-      triggeredAt: new Date().toISOString(),
-    };
+    const eventName = job.name === "backInStock" ? "stock.replenished" : "stock.low";
+    const envelope = buildEnvelope(eventName, job.data);
 
     const subscribers = await ApiKey.find({
       isActive: true,
-      callbackUrl: { $exists: true, $ne: null, $ne: "" },
+      callbackUrl: { $exists: true, $ne: "" },
     }).lean();
 
     if (subscribers.length === 0) {
-      console.log(`[QUEUE JOB ${job.id}] No registered webhook subscribers, nothing to deliver.\n`);
-      return;
+      return { delivered: 0, total: 0 };
     }
 
-    const deliveries = await Promise.all(
-      subscribers.map((sub) => deliverWebhook(sub.callbackUrl, eventType, payload))
+    const results = await Promise.allSettled(
+      subscribers.map((sub) =>
+        dispatchWebhook(sub.callbackUrl, envelope, sub.keySecret)
+      )
     );
 
-    const succeeded = deliveries.filter(Boolean).length;
-    console.log(
-      `[QUEUE JOB ${job.id}] Delivered to ${succeeded}/${subscribers.length} subscriber(s).\n`
-    );
+    const delivered = results.filter(
+      (r) => r.status === "fulfilled" && r.value === true
+    ).length;
+
+    return { delivered, total: subscribers.length };
   },
-  { connection: redisConfig }
+  {
+    connection: redisConnection,
+    concurrency: 5,
+  }
 );
-
-stockWorker.on("completed", (job) => {
-  console.log(`[QUEUE JOB ${job.id}] Completed successfully!`);
-});
-
-stockWorker.on("failed", (job, err) => {
-  console.error(`[QUEUE JOB ${job.id}] Failed: ${err.message}`);
-});
 
 module.exports = stockWorker;
