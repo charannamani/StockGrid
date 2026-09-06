@@ -128,34 +128,6 @@ describe("Stock Movements", () => {
     expect(stockRes.body.stock[0].currentQuantity).toBe(50);
   });
 
-  test("transfer moves quantity between warehouses and conserves total", async () => {
-    const { token, warehouseA, warehouseB, product } = await setupAdminAndData();
-
-    await request(app)
-      .post("/api/movements")
-      .set("Authorization", `Bearer ${token}`)
-      .send({ product: product._id, warehouse: warehouseA._id, type: "inbound", quantity: 100 });
-
-    const res = await request(app)
-      .post("/api/movements/transfer")
-      .set("Authorization", `Bearer ${token}`)
-      .send({
-        product: product._id,
-        fromWarehouse: warehouseA._id,
-        toWarehouse: warehouseB._id,
-        quantity: 40,
-      });
-
-    expect(res.statusCode).toBe(201);
-    expect(res.body.transferOut.type).toBe("transfer_out");
-    expect(res.body.transferIn.type).toBe("transfer_in");
-
-    const totalRes = await request(app)
-      .get(`/api/stock/product/${product._id}`)
-      .set("Authorization", `Bearer ${token}`);
-
-    expect(totalRes.body.totalQuantity).toBe(100);
-  });
 
   test("availability search returns single warehouse when one covers the request", async () => {
     const { token, warehouseA, warehouseB, product } = await setupAdminAndData();

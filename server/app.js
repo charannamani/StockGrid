@@ -27,6 +27,7 @@ app.use("/api/warehouses", require("./routes/warehouseRoutes"));
 app.use("/api/products", require("./routes/productRoutes"));
 app.use("/api/stock", require("./routes/stockRoutes"));
 app.use("/api/movements", require("./routes/movementRoutes"));
+app.use("/api/transfers", require("./routes/transferRoutes"));
 app.use("/api/apikeys", require("./routes/apiKeyRoutes"));
 
 const serverAdapter = new ExpressAdapter();

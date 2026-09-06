@@ -1,5 +1,7 @@
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 const User = require("../models/User");
+const Warehouse = require("../models/Warehouse");
 
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET, {
@@ -62,4 +64,71 @@ const loginUser = async (req, res, next) => {
   }
 };
 
-module.exports = { registerUser, loginUser };
+const listUsers = async (req, res, next) => {
+  try {
+    const users = await User.find()
+      .select("-password")
+      .populate("warehouses", "name");
+    res.json(users);
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateUserWarehouses = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { warehouses } = req.body;
+
+    if (!Array.isArray(warehouses)) {
+      return res.status(400).json({ message: "warehouses must be an array" });
+    }
+
+    for (const whId of warehouses) {
+      if (!mongoose.Types.ObjectId.isValid(whId)) {
+        return res.status(400).json({ message: `Invalid warehouse ID: ${whId}` });
+      }
+    }
+
+    if (warehouses.length > 0) {
+      const uniqueIds = Array.from(new Set(warehouses.map((w) => w.toString())));
+      const existingCount = await Warehouse.countDocuments({
+        _id: { $in: uniqueIds },
+      });
+      if (existingCount !== uniqueIds.length) {
+        return res.status(400).json({ message: "One or more warehouse IDs do not exist" });
+      }
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid user ID" });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.role === "admin") {
+      return res.status(400).json({ message: "warehouses do not apply to admin users" });
+    }
+
+    user.warehouses = warehouses;
+    await user.save();
+
+    const updatedUser = await User.findById(id)
+      .select("-password")
+      .populate("warehouses", "name");
+
+    res.json(updatedUser);
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {
+  registerUser,
+  loginUser,
+  listUsers,
+  updateUserWarehouses,
+};
