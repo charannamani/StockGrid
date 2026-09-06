@@ -232,7 +232,7 @@ const cancelTransfer = async (req, res, next) => {
         const revertMovementData = {
           product: transfer.product,
           warehouse: transfer.fromWarehouse,
-          fromWarehouse: transfer.fromWarehouse,
+          fromWarehouse: null,
           toWarehouse: transfer.fromWarehouse,
           type: "inbound",
           quantity: transfer.quantity,

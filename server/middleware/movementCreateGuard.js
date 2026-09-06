@@ -7,8 +7,12 @@ const warehouseGuard = checkWarehouseAccess(
 const movementCreateGuard = (req, res, next) => {
   const { type } = req.body;
 
+  const isAdmin =
+    (req.user && req.user.role === "admin") ||
+    (req.apiKey && req.apiKey.createdBy && req.apiKey.createdBy.role === "admin");
+
   if (type === "adjustment") {
-    if (req.user && req.user.role === "admin") {
+    if (isAdmin) {
       return next();
     }
     return res.status(403).json({ message: "Access denied, admin only" });
