@@ -11,6 +11,7 @@ const {
   reserveStock,
   confirmReservation,
   releaseReservation,
+  getReservations,
 } = require("../controllers/reservationController");
 const { flexibleAuth } = require("../middleware/authMiddleware");
 const { checkWarehouseAccess } = require("../middleware/warehouseAccessMiddleware");
@@ -28,6 +29,7 @@ const getReservationWarehouse = async (req) => {
 
 router.get("/", flexibleAuth, getStockLevels);
 router.get("/availability", flexibleAuth, checkAvailability);
+router.get("/reservations", flexibleAuth, getReservations);
 
 router.post(
   "/reserve",

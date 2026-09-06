@@ -237,8 +237,41 @@ const releaseReservation = async (req, res, next) => {
   }
 };
 
+const getReservations = async (req, res, next) => {
+  try {
+    const { status, product, warehouse, page = 1, limit = 50 } = req.query;
+    const filter = {};
+
+    if (status) filter.status = status;
+    if (product) filter.product = product;
+    if (warehouse) filter.warehouse = warehouse;
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const reservations = await Reservation.find(filter)
+      .populate("product", "name sku")
+      .populate("warehouse", "name address")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .lean();
+
+    const total = await Reservation.countDocuments(filter);
+
+    res.json({
+      reservations,
+      total,
+      page: Number(page),
+      pages: Math.ceil(total / Number(limit)),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   reserveStock,
   confirmReservation,
   releaseReservation,
+  getReservations,
 };

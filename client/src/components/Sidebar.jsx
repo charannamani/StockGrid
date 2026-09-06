@@ -7,6 +7,7 @@ import {
   Boxes,
   ArrowLeftRight,
   Truck,
+  BookmarkCheck,
   KeyRound,
   LogOut,
 } from "lucide-react";
@@ -19,6 +20,7 @@ const navItems = [
   { to: "/stock", label: "Inventory & Router", icon: Boxes },
   { to: "/movements", label: "Movements", icon: ArrowLeftRight },
   { to: "/transfers", label: "Transfers", icon: Truck },
+  { to: "/reservations", label: "Reservations", icon: BookmarkCheck },
   { to: "/api-keys", label: "API Keys", icon: KeyRound, adminOnly: true },
 ];
 

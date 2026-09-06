@@ -10,6 +10,7 @@ import Products from "./pages/Products";
 import StockView from "./pages/StockView";
 import MovementHistory from "./pages/MovementHistory";
 import Transfers from "./pages/Transfers";
+import Reservations from "./pages/Reservations";
 import ApiKeys from "./pages/ApiKeys";
 
 import Layout from "./components/Layout";
@@ -44,14 +45,8 @@ const AppRoutes = () => {
         <Route path="/stock" element={<StockView />} />
         <Route path="/movements" element={<MovementHistory />} />
         <Route path="/transfers" element={<Transfers />} />
-        <Route
-          path="/warehouses"
-          element={
-            <AdminRoute>
-              <Warehouses />
-            </AdminRoute>
-          }
-        />
+        <Route path="/reservations" element={<Reservations />} />
+        <Route path="/warehouses" element={<Warehouses />} />
         <Route
           path="/api-keys"
           element={
