@@ -15,6 +15,13 @@ const connect = async () => {
   });
   const uri = mongoServer.getUri();
   await mongoose.connect(uri);
+  if (redisConnection && (redisConnection.status === "end" || redisConnection.status === "close")) {
+    try {
+      await redisConnection.connect();
+    } catch (e) {
+      // ignore
+    }
+  }
 };
 
 const closeDatabase = async () => {

@@ -25,9 +25,8 @@ const stockMovementSchema = new mongoose.Schema(
       enum: [
         "inbound",
         "outbound",
-        "transfer",
-        "transfer_out",
         "transfer_in",
+        "transfer_out",
         "adjustment",
       ],
     },
