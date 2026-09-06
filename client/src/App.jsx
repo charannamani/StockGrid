@@ -9,6 +9,7 @@ import Warehouses from "./pages/Warehouses";
 import Products from "./pages/Products";
 import StockView from "./pages/StockView";
 import MovementHistory from "./pages/MovementHistory";
+import Transfers from "./pages/Transfers";
 import ApiKeys from "./pages/ApiKeys";
 
 import Layout from "./components/Layout";
@@ -42,6 +43,7 @@ const AppRoutes = () => {
         <Route path="/products" element={<Products />} />
         <Route path="/stock" element={<StockView />} />
         <Route path="/movements" element={<MovementHistory />} />
+        <Route path="/transfers" element={<Transfers />} />
         <Route
           path="/warehouses"
           element={

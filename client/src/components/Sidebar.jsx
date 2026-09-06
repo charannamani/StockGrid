@@ -6,6 +6,7 @@ import {
   Package,
   Boxes,
   ArrowLeftRight,
+  Truck,
   KeyRound,
   LogOut,
 } from "lucide-react";
@@ -17,6 +18,7 @@ const navItems = [
   { to: "/products", label: "Products", icon: Package },
   { to: "/stock", label: "Inventory & Router", icon: Boxes },
   { to: "/movements", label: "Movements", icon: ArrowLeftRight },
+  { to: "/transfers", label: "Transfers", icon: Truck },
   { to: "/api-keys", label: "API Keys", icon: KeyRound, adminOnly: true },
 ];
 

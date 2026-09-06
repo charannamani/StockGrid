@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeftRight, Plus, X, AlertTriangle, CheckCircle2, Sparkles } from "lucide-react";
 import API from "../utils/api";
+import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 
 const TYPE_STYLES = {
@@ -12,18 +13,18 @@ const TYPE_STYLES = {
 };
 
 const emptyMovementForm = { product: "", warehouse: "", type: "inbound", quantity: "", direction: "increase", reason: "" };
-const emptyTransferForm = { product: "", fromWarehouse: "", toWarehouse: "", quantity: "", reason: "" };
 
 const MovementHistory = () => {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
   const [movements, setMovements] = useState([]);
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [filters, setFilters] = useState({ product: "", warehouse: "" });
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [formMode, setFormMode] = useState("movement");
   const [movementForm, setMovementForm] = useState(emptyMovementForm);
-  const [transferForm, setTransferForm] = useState(emptyTransferForm);
   const [saving, setSaving] = useState(false);
   const [warehouseCapacities, setWarehouseCapacities] = useState({});
 
@@ -90,9 +91,7 @@ const MovementHistory = () => {
   };
 
   const openForm = () => {
-    setFormMode("movement");
     setMovementForm(emptyMovementForm);
-    setTransferForm(emptyTransferForm);
     setShowForm(true);
   };
 
@@ -112,33 +111,6 @@ const MovementHistory = () => {
       };
       await API.post("/movements", payload);
       toast.success("Movement recorded");
-      closeForm();
-      fetchMovements();
-      fetchCapacityMeta(warehouses);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Something went wrong");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleTransferSubmit = async (e) => {
-    e.preventDefault();
-    if (transferForm.fromWarehouse === transferForm.toWarehouse) {
-      toast.error("Source and destination warehouses must be different");
-      return;
-    }
-    setSaving(true);
-    try {
-      const payload = {
-        productId: transferForm.product,
-        fromWarehouseId: transferForm.fromWarehouse,
-        toWarehouseId: transferForm.toWarehouse,
-        quantity: Number(transferForm.quantity),
-        reason: transferForm.reason,
-      };
-      await API.post("/movements/transfer", payload);
-      toast.success("Transfer recorded");
       closeForm();
       fetchMovements();
       fetchCapacityMeta(warehouses);
@@ -276,179 +248,103 @@ const MovementHistory = () => {
               </button>
             </div>
 
-            <div style={styles.tabRow}>
-              <button
-                type="button"
-                style={{ ...styles.tabBtn, ...(formMode === "movement" ? styles.tabBtnActive : {}) }}
-                onClick={() => setFormMode("movement")}
+            <form onSubmit={handleMovementSubmit}>
+              <label style={styles.label}>Product</label>
+              <select
+                style={styles.input}
+                value={movementForm.product}
+                onChange={(e) => setMovementForm({ ...movementForm, product: e.target.value })}
+                required
               >
-                Inbound / Outbound / Adjust
-              </button>
-              <button
-                type="button"
-                style={{ ...styles.tabBtn, ...(formMode === "transfer" ? styles.tabBtnActive : {}) }}
-                onClick={() => setFormMode("transfer")}
+                <option value="">Select product</option>
+                {products.map((p) => <option key={p._id} value={p._id}>{p.name} ({p.sku})</option>)}
+              </select>
+
+              <label style={styles.label}>Warehouse & Facility Area</label>
+              <select
+                style={styles.input}
+                value={movementForm.warehouse}
+                onChange={(e) => setMovementForm({ ...movementForm, warehouse: e.target.value })}
+                required
               >
-                Transfer
+                <option value="">Select destination warehouse</option>
+                {warehouses.map((w) => (
+                  <option key={w._id} value={w._id}>
+                    {w.name} — {w.address || "Area Not Set"}
+                  </option>
+                ))}
+              </select>
+
+              {movementForm.warehouse && (movementForm.type === "inbound" || (movementForm.type === "adjustment" && movementForm.direction === "increase")) &&
+                renderCapacityBadge(movementForm.warehouse, movementForm.quantity)}
+
+              <label style={styles.label}>Movement Classification</label>
+              <select
+                style={styles.input}
+                value={movementForm.type}
+                onChange={(e) => setMovementForm({ ...movementForm, type: e.target.value })}
+              >
+                <option value="inbound">Inbound (Stock Arrival)</option>
+                <option value="outbound">Outbound (Dispatch / Sale)</option>
+                {isAdmin && <option value="adjustment">Stock Adjustment (Audit)</option>}
+              </select>
+
+              {movementForm.type === "inbound" && movementForm.product && movementForm.warehouse && (
+                <div style={styles.tagPreviewBox}>
+                  {isProductNewToWarehouse(movementForm.product, movementForm.warehouse) ? (
+                    <span style={styles.newListingTag}>
+                      <Sparkles size={12} /> Initial SKU Stocking (New Listing at Location)
+                    </span>
+                  ) : (
+                    <span style={styles.restockTag}>
+                      📦 Routine Inventory Replenishment
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {movementForm.type === "adjustment" && (
+                <>
+                  <label style={styles.label}>Audit Direction</label>
+                  <select
+                    style={styles.input}
+                    value={movementForm.direction}
+                    onChange={(e) => setMovementForm({ ...movementForm, direction: e.target.value })}
+                  >
+                    <option value="increase">Increase Count</option>
+                    <option value="decrease">Decrease Count</option>
+                  </select>
+                </>
+              )}
+
+              <label style={styles.label}>Quantity</label>
+              <input
+                style={styles.input}
+                type="number"
+                min="1"
+                value={movementForm.quantity}
+                onChange={(e) => setMovementForm({ ...movementForm, quantity: e.target.value })}
+                required
+              />
+
+              <label style={styles.label}>Reason / PO Reference</label>
+              <input
+                style={styles.input}
+                placeholder="e.g. PO-84920 Supplier Delivery"
+                value={movementForm.reason}
+                onChange={(e) => setMovementForm({ ...movementForm, reason: e.target.value })}
+              />
+
+              <button style={styles.submitBtn} type="submit" disabled={saving}>
+                {saving
+                  ? "Recording..."
+                  : movementForm.type === "inbound"
+                  ? "Record Inbound Movement"
+                  : movementForm.type === "outbound"
+                  ? "Record Outbound Movement"
+                  : "Record Stock Adjustment"}
               </button>
-            </div>
-
-            {formMode === "movement" ? (
-              <form onSubmit={handleMovementSubmit}>
-                <label style={styles.label}>Product</label>
-                <select
-                  style={styles.input}
-                  value={movementForm.product}
-                  onChange={(e) => setMovementForm({ ...movementForm, product: e.target.value })}
-                  required
-                >
-                  <option value="">Select product</option>
-                  {products.map((p) => <option key={p._id} value={p._id}>{p.name} ({p.sku})</option>)}
-                </select>
-
-                <label style={styles.label}>Warehouse & Facility Area</label>
-                <select
-                  style={styles.input}
-                  value={movementForm.warehouse}
-                  onChange={(e) => setMovementForm({ ...movementForm, warehouse: e.target.value })}
-                  required
-                >
-                  <option value="">Select destination warehouse</option>
-                  {warehouses.map((w) => (
-                    <option key={w._id} value={w._id}>
-                      {w.name} — {w.address || "Area Not Set"}
-                    </option>
-                  ))}
-                </select>
-
-                {movementForm.warehouse && (movementForm.type === "inbound" || (movementForm.type === "adjustment" && movementForm.direction === "increase")) &&
-                  renderCapacityBadge(movementForm.warehouse, movementForm.quantity)}
-
-                <label style={styles.label}>Movement Classification</label>
-                <select
-                  style={styles.input}
-                  value={movementForm.type}
-                  onChange={(e) => setMovementForm({ ...movementForm, type: e.target.value })}
-                >
-                  <option value="inbound">Inbound (Stock Arrival)</option>
-                  <option value="outbound">Outbound (Dispatch / Sale)</option>
-                  <option value="adjustment">Stock Adjustment (Audit)</option>
-                </select>
-
-                {movementForm.type === "inbound" && movementForm.product && movementForm.warehouse && (
-                  <div style={styles.tagPreviewBox}>
-                    {isProductNewToWarehouse(movementForm.product, movementForm.warehouse) ? (
-                      <span style={styles.newListingTag}>
-                        <Sparkles size={12} /> Initial SKU Stocking (New Listing at Location)
-                      </span>
-                    ) : (
-                      <span style={styles.restockTag}>
-                        📦 Routine Inventory Replenishment
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {movementForm.type === "adjustment" && (
-                  <>
-                    <label style={styles.label}>Audit Direction</label>
-                    <select
-                      style={styles.input}
-                      value={movementForm.direction}
-                      onChange={(e) => setMovementForm({ ...movementForm, direction: e.target.value })}
-                    >
-                      <option value="increase">Increase Count</option>
-                      <option value="decrease">Decrease Count</option>
-                    </select>
-                  </>
-                )}
-
-                <label style={styles.label}>Quantity</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  min="1"
-                  value={movementForm.quantity}
-                  onChange={(e) => setMovementForm({ ...movementForm, quantity: e.target.value })}
-                  required
-                />
-
-                <label style={styles.label}>Reason / PO Reference</label>
-                <input
-                  style={styles.input}
-                  placeholder="e.g. PO-84920 Supplier Delivery"
-                  value={movementForm.reason}
-                  onChange={(e) => setMovementForm({ ...movementForm, reason: e.target.value })}
-                />
-
-                <button style={styles.submitBtn} type="submit" disabled={saving}>
-                  {saving ? "Recording..." : "Record Inbound Movement"}
-                </button>
-              </form>
-            ) : (
-              <form onSubmit={handleTransferSubmit}>
-                <label style={styles.label}>Product</label>
-                <select
-                  style={styles.input}
-                  value={transferForm.product}
-                  onChange={(e) => setTransferForm({ ...transferForm, product: e.target.value })}
-                  required
-                >
-                  <option value="">Select product</option>
-                  {products.map((p) => <option key={p._id} value={p._id}>{p.name} ({p.sku})</option>)}
-                </select>
-
-                <label style={styles.label}>From Warehouse (Source Area)</label>
-                <select
-                  style={styles.input}
-                  value={transferForm.fromWarehouse}
-                  onChange={(e) => setTransferForm({ ...transferForm, fromWarehouse: e.target.value })}
-                  required
-                >
-                  <option value="">Select source warehouse</option>
-                  {warehouses.map((w) => (
-                    <option key={w._id} value={w._id}>{w.name} — {w.address || "Area Not Set"}</option>
-                  ))}
-                </select>
-
-                <label style={styles.label}>To Warehouse (Destination Area)</label>
-                <select
-                  style={styles.input}
-                  value={transferForm.toWarehouse}
-                  onChange={(e) => setTransferForm({ ...transferForm, toWarehouse: e.target.value })}
-                  required
-                >
-                  <option value="">Select destination warehouse</option>
-                  {warehouses.map((w) => (
-                    <option key={w._id} value={w._id}>{w.name} — {w.address || "Area Not Set"}</option>
-                  ))}
-                </select>
-
-                {transferForm.toWarehouse && renderCapacityBadge(transferForm.toWarehouse, transferForm.quantity)}
-
-                <label style={styles.label}>Quantity</label>
-                <input
-                  style={styles.input}
-                  type="number"
-                  min="1"
-                  value={transferForm.quantity}
-                  onChange={(e) => setTransferForm({ ...transferForm, quantity: e.target.value })}
-                  required
-                />
-
-                <label style={styles.label}>Transfer Note (optional)</label>
-                <input
-                  style={styles.input}
-                  placeholder="e.g. Balancing stock across city nodes"
-                  value={transferForm.reason}
-                  onChange={(e) => setTransferForm({ ...transferForm, reason: e.target.value })}
-                />
-
-                <button style={styles.submitBtn} type="submit" disabled={saving}>
-                  {saving ? "Executing Transfer..." : "Record Transfer"}
-                </button>
-              </form>
-            )}
+            </form>
           </div>
         </div>
       )}

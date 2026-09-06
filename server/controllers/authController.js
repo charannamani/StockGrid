@@ -33,6 +33,7 @@ const registerUser = async (req, res, next) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      warehouses: user.warehouses || [],
       token: generateToken(user._id, user.role),
     });
   } catch (error) {
@@ -57,6 +58,7 @@ const loginUser = async (req, res, next) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      warehouses: user.warehouses || [],
       token: generateToken(user._id, user.role),
     });
   } catch (error) {
