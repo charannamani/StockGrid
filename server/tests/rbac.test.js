@@ -219,6 +219,7 @@ describe("Warehouse-Scoped RBAC Action Endpoint Gating", () => {
         product: product._id.toString(),
         warehouse: warehouseA._id.toString(),
         type: "adjustment",
+        direction: "increase",
         quantity: 25,
       });
     expect(adminAdj.status).toBe(201);

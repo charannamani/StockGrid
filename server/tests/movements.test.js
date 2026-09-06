@@ -166,4 +166,129 @@ describe("Stock Movements", () => {
     expect(res.body.fulfillable).toBe(false);
     expect(res.body.shortfall).toBe(490);
   });
+
+  describe("Stock Adjustments (Signed Delta)", () => {
+    test("adjustment increase adds to existing stock rather than replacing it", async () => {
+      const { token, warehouseA, product } = await setupAdminAndData();
+
+      // Seed 50 units via inbound
+      await request(app)
+        .post("/api/movements")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ product: product._id, warehouse: warehouseA._id, type: "inbound", quantity: 50 });
+
+      // Increase by 15 via adjustment
+      const res = await request(app)
+        .post("/api/movements")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          product: product._id,
+          warehouse: warehouseA._id,
+          type: "adjustment",
+          direction: "increase",
+          quantity: 15,
+          reason: "Found extra pallet",
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.direction).toBe("increase");
+
+      const stockRes = await request(app)
+        .get(`/api/stock/warehouse/${warehouseA._id}`)
+        .set("Authorization", `Bearer ${token}`);
+
+      // Must be 65 (50 + 15), NOT 15
+      expect(stockRes.body.stock[0].currentQuantity).toBe(65);
+    });
+
+    test("adjustment decrease reduces stock by exact quantity", async () => {
+      const { token, warehouseA, product } = await setupAdminAndData();
+
+      await request(app)
+        .post("/api/movements")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ product: product._id, warehouse: warehouseA._id, type: "inbound", quantity: 50 });
+
+      const res = await request(app)
+        .post("/api/movements")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          product: product._id,
+          warehouse: warehouseA._id,
+          type: "adjustment",
+          direction: "decrease",
+          quantity: 20,
+          reason: "Damaged inventory write-off",
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.direction).toBe("decrease");
+
+      const stockRes = await request(app)
+        .get(`/api/stock/warehouse/${warehouseA._id}`)
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(stockRes.body.stock[0].currentQuantity).toBe(30);
+    });
+
+    test("adjustment decrease exceeding current stock returns 400 and leaves stock unchanged", async () => {
+      const { token, warehouseA, product } = await setupAdminAndData();
+
+      await request(app)
+        .post("/api/movements")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ product: product._id, warehouse: warehouseA._id, type: "inbound", quantity: 20 });
+
+      const res = await request(app)
+        .post("/api/movements")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          product: product._id,
+          warehouse: warehouseA._id,
+          type: "adjustment",
+          direction: "decrease",
+          quantity: 50,
+          reason: "Over-decrement attempt",
+        });
+
+      expect(res.status).toBe(400);
+
+      const stockRes = await request(app)
+        .get(`/api/stock/warehouse/${warehouseA._id}`)
+        .set("Authorization", `Bearer ${token}`);
+
+      expect(stockRes.body.stock[0].currentQuantity).toBe(20);
+    });
+
+    test("missing or invalid direction on adjustment returns 400", async () => {
+      const { token, warehouseA, product } = await setupAdminAndData();
+
+      // Missing direction
+      const resMissing = await request(app)
+        .post("/api/movements")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          product: product._id,
+          warehouse: warehouseA._id,
+          type: "adjustment",
+          quantity: 10,
+        });
+
+      expect(resMissing.status).toBe(400);
+
+      // Invalid direction
+      const resInvalid = await request(app)
+        .post("/api/movements")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          product: product._id,
+          warehouse: warehouseA._id,
+          type: "adjustment",
+          direction: "sideways",
+          quantity: 10,
+        });
+
+      expect(resInvalid.status).toBe(400);
+    });
+  });
 });

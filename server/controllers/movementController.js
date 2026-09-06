@@ -84,7 +84,7 @@ const checkStockThresholdEvents = async (productId, warehouseId, previousQuantit
   }
 };
 
-const recordMovement = async ({ product, warehouse, type, quantity, reason, attribution }) => {
+const recordMovement = async ({ product, warehouse, type, quantity, reason, attribution, direction }) => {
   const qty = Number(quantity);
 
   if (!product || !warehouse || !type || !qty || qty <= 0) {
@@ -95,6 +95,12 @@ const recordMovement = async ({ product, warehouse, type, quantity, reason, attr
 
   if (type !== "inbound" && type !== "outbound" && type !== "adjustment") {
     const err = new Error("Invalid movement type");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (type === "adjustment" && direction !== "increase" && direction !== "decrease") {
+    const err = new Error("Adjustment direction must be 'increase' or 'decrease'");
     err.statusCode = 400;
     throw err;
   }
@@ -132,15 +138,28 @@ const recordMovement = async ({ product, warehouse, type, quantity, reason, attr
           err.statusCode = 400;
           throw err;
         }
-      } else {
-        updatedStock = await Stock.findOneAndUpdate(
-          { product, warehouse },
-          {
-            $set: { currentQuantity: qty },
-            $setOnInsert: { product, warehouse, lowStockThreshold: defaultThreshold },
-          },
-          { new: true, upsert: true, session }
-        );
+      } else if (type === "adjustment") {
+        if (direction === "increase") {
+          updatedStock = await Stock.findOneAndUpdate(
+            { product, warehouse },
+            {
+              $inc: { currentQuantity: qty },
+              $setOnInsert: { product, warehouse, lowStockThreshold: defaultThreshold },
+            },
+            { new: true, upsert: true, session }
+          );
+        } else {
+          updatedStock = await Stock.findOneAndUpdate(
+            { product, warehouse, currentQuantity: { $gte: qty } },
+            { $inc: { currentQuantity: -qty } },
+            { new: true, session }
+          );
+          if (!updatedStock) {
+            const err = new Error("Insufficient stock for adjustment");
+            err.statusCode = 400;
+            throw err;
+          }
+        }
       }
 
       const movementData = {
@@ -149,6 +168,7 @@ const recordMovement = async ({ product, warehouse, type, quantity, reason, attr
         fromWarehouse: type === "outbound" ? warehouse : null,
         warehouse,
         type,
+        direction: type === "adjustment" ? direction : undefined,
         quantity: qty,
         reason,
         ...attribution,
@@ -207,7 +227,7 @@ const getMovementHistory = async (req, res, next) => {
 const createMovement = async (req, res, next) => {
   const product = req.body.product || req.body.productId;
   const warehouse = req.body.warehouse || req.body.warehouseId;
-  const { type, quantity, reason } = req.body;
+  const { type, quantity, reason, direction } = req.body;
 
   try {
     const { movement } = await recordMovement({
@@ -215,6 +235,7 @@ const createMovement = async (req, res, next) => {
       warehouse,
       type,
       quantity,
+      direction,
       reason,
       attribution: buildAttribution(req),
     });

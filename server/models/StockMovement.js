@@ -30,6 +30,10 @@ const stockMovementSchema = new mongoose.Schema(
         "adjustment",
       ],
     },
+    direction: {
+      type: String,
+      enum: ["increase", "decrease"],
+    },
     quantity: {
       type: Number,
       required: true,
