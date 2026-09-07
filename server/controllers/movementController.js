@@ -20,14 +20,12 @@ const scanKeys = async (pattern) => {
 const clearStockCache = async () => {
   try {
     if (!redisClient || redisClient.status !== "ready") return;
-    const [keys, whKeys, prodKeys, availKeys] = await Promise.all([
-      scanKeys("stocks:*"),
-      scanKeys("stock_wh:*"),
-      scanKeys("stock_prod:*"),
+    const [stockKeys, availKeys] = await Promise.all([
+      scanKeys("stock*"),
       scanKeys("availability:*"),
     ]);
 
-    const allKeys = [...keys, ...whKeys, ...prodKeys, ...availKeys];
+    const allKeys = [...stockKeys, ...availKeys];
     if (allKeys.length > 0) {
       await redisClient.del(allKeys);
     }

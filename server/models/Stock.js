@@ -34,5 +34,7 @@ const stockSchema = new mongoose.Schema(
 );
 
 stockSchema.index({ product: 1, warehouse: 1 }, { unique: true });
+stockSchema.index({ warehouse: 1, currentQuantity: -1 });
+stockSchema.index({ product: 1, currentQuantity: -1 });
 
 module.exports = mongoose.model("Stock", stockSchema);

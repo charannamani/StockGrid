@@ -2,6 +2,9 @@ const mongoose = require("mongoose");
 const Stock = require("../models/Stock");
 const Product = require("../models/Product");
 const Warehouse = require("../models/Warehouse");
+const { redisConnection: redisClient } = require("../config/redis");
+
+const CACHE_TTL = 300; // 5 minutes
 
 const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   const R = 6371;
@@ -17,9 +20,29 @@ const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   return R * c;
 };
 
+const tryCache = async (key) => {
+  try {
+    if (!redisClient || redisClient.status !== "ready") return null;
+    const cached = await redisClient.get(key);
+    return cached ? JSON.parse(cached) : null;
+  } catch { return null; }
+};
+
+const setCache = async (key, data, ttl = CACHE_TTL) => {
+  try {
+    if (!redisClient || redisClient.status !== "ready") return;
+    await redisClient.setex(key, ttl, JSON.stringify(data));
+  } catch { /* ignore cache write errors */ }
+};
+
 const getStockLevels = async (req, res, next) => {
   try {
     const { product, warehouse } = req.query;
+    const cacheKey = `stocks:${req.originalUrl}`;
+
+    const cached = await tryCache(cacheKey);
+    if (cached) return res.json(cached);
+
     const filter = {};
 
     if (product && mongoose.Types.ObjectId.isValid(product)) {
@@ -41,6 +64,7 @@ const getStockLevels = async (req, res, next) => {
         availableQuantity: Math.max(0, entry.currentQuantity - (entry.reservedQuantity || 0)),
       }));
 
+    await setCache(cacheKey, validStock);
     res.json(validStock);
   } catch (error) {
     next(error);
@@ -54,6 +78,10 @@ const getStockByWarehouse = async (req, res, next) => {
     if (!warehouseId || !mongoose.Types.ObjectId.isValid(warehouseId)) {
       return res.json({ stock: [], totalOccupancy: 0, capacity: null, spaceLeft: null, isOverCapacity: false });
     }
+
+    const cacheKey = `stock_wh:${warehouseId}`;
+    const cached = await tryCache(cacheKey);
+    if (cached) return res.json(cached);
 
     const [warehouse, stock] = await Promise.all([
       Warehouse.findById(warehouseId).lean(),
@@ -76,13 +104,16 @@ const getStockByWarehouse = async (req, res, next) => {
     const spaceLeft = capacity != null ? capacity - totalOccupancy : null;
     const isOverCapacity = capacity != null ? totalOccupancy > capacity : false;
 
-    res.json({
+    const result = {
       stock: validStock,
       totalOccupancy,
       capacity,
       spaceLeft,
       isOverCapacity,
-    });
+    };
+
+    await setCache(cacheKey, result);
+    res.json(result);
   } catch (error) {
     next(error);
   }

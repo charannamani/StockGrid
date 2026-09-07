@@ -319,7 +319,8 @@ const getTransferById = async (req, res, next) => {
       .populate("initiatedBy", "name email")
       .populate("receivedBy", "name email")
       .populate("outboundMovement")
-      .populate("inboundMovement");
+      .populate("inboundMovement")
+      .lean();
 
     if (!transfer) {
       return res.status(404).json({ message: "Transfer not found" });

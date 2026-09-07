@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const compression = require("compression");
 const { protect, adminOnly } = require("./middleware/authMiddleware");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const { generalLimiter } = require("./middleware/rateLimiter");
@@ -11,7 +12,8 @@ const reservationQueue = require("./queues/reservationQueue");
 
 const app = express();
 
-app.use(express.json());
+app.use(compression());
+app.use(express.json({ limit: "1mb" }));
 
 app.use("/api/webhooks", require("./routes/webhookRoutes"));
 
