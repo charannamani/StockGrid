@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import {
   Truck,
   Plus,
@@ -46,6 +46,139 @@ const STATUS_STYLES = {
     icon: XCircle,
   },
 };
+
+const TransferCard = memo(({
+  transfer,
+  canConfirm,
+  canCancel,
+  isActing,
+  onConfirm,
+  onOpenCancel,
+}) => {
+  const s = STATUS_STYLES[transfer.status] || STATUS_STYLES.in_transit;
+  const StatusIcon = s.icon;
+
+  return (
+    <div
+      style={{
+        ...styles.tableRow,
+        opacity: transfer._optimistic ? 0.75 : 1,
+      }}
+    >
+      <div>
+        <div style={styles.boldCell}>{transfer.product?.name || "—"}</div>
+        <div style={styles.subCell}>{transfer.product?.sku || "SKU-UNKNOWN"}</div>
+      </div>
+
+      <div style={styles.routeCell}>
+        <span style={styles.sourceTag}>
+          {transfer.fromWarehouse?.name || "—"}
+        </span>
+        <ArrowRight size={14} color="#94a3b8" />
+        <span style={styles.destTag}>
+          {transfer.toWarehouse?.name || "—"}
+        </span>
+      </div>
+
+      <div>
+        <span style={styles.qtyCell}>{transfer.quantity}</span>
+      </div>
+
+      <div>
+        <span
+          style={{
+            ...styles.statusBadge,
+            background: s.bg,
+            color: s.color,
+            borderColor: s.border,
+          }}
+        >
+          <StatusIcon size={12} />
+          <span>{s.label}</span>
+        </span>
+      </div>
+
+      <div>
+        <div style={styles.subCellBold}>
+          {transfer.initiatedBy?.name || "Admin"}
+        </div>
+        <div style={styles.subCell}>
+          {transfer.initiatedAt
+            ? new Date(transfer.initiatedAt).toLocaleDateString()
+            : "—"}
+        </div>
+      </div>
+
+      <div>
+        {transfer.status === "received" && (
+          <>
+            <div style={styles.subCellBold}>
+              {transfer.receivedBy?.name || "Staff"}
+            </div>
+            <div style={styles.subCell}>
+              {transfer.receivedAt
+                ? new Date(transfer.receivedAt).toLocaleDateString()
+                : "—"}
+            </div>
+          </>
+        )}
+        {transfer.status === "cancelled" && (
+          <div style={styles.subCell}>
+            {transfer.cancelledAt
+              ? new Date(transfer.cancelledAt).toLocaleDateString()
+              : "—"}
+          </div>
+        )}
+        {transfer.status === "in_transit" && (
+          <span style={styles.pendingText}>Awaiting Arrival</span>
+        )}
+      </div>
+
+      <div style={styles.actionCell}>
+        {transfer.status === "in_transit" ? (
+          <div style={styles.btnGroup}>
+            <button
+              style={{
+                ...styles.confirmBtn,
+                ...(!canConfirm ? styles.btnDisabled : {}),
+              }}
+              disabled={!canConfirm || isActing}
+              title={
+                canConfirm
+                  ? "Confirm receipt and credit stock to destination"
+                  : "You don't have access to destination warehouse"
+              }
+              onClick={() => onConfirm(transfer)}
+            >
+              <CheckCircle2 size={14} />
+              <span>Receive</span>
+            </button>
+            <button
+              style={{
+                ...styles.cancelBtn,
+                ...(!canCancel ? styles.btnDisabled : {}),
+              }}
+              disabled={!canCancel || isActing}
+              title={
+                canCancel
+                  ? "Cancel transfer and return stock to source"
+                  : "You don't have access to source warehouse"
+              }
+              onClick={() => onOpenCancel(transfer)}
+            >
+              <Ban size={14} />
+              <span>Cancel</span>
+            </button>
+          </div>
+        ) : (
+          <span style={styles.closedText}>Completed</span>
+        )}
+      </div>
+    </div>
+  );
+});
+
+TransferCard.displayName = "TransferCard";
 
 const Transfers = () => {
   const { user } = useAuth();
@@ -97,7 +230,7 @@ const Transfers = () => {
       ? sourceStockMap[initiateForm.product] ?? 0
       : null;
 
-  const fetchTransfers = async () => {
+  const fetchTransfers = useCallback(async () => {
     try {
       setLoading(true);
       const res = await API.get("/transfers");
@@ -107,9 +240,9 @@ const Transfers = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchRefs = async () => {
+  const fetchRefs = useCallback(async () => {
     try {
       const [prodRes, whRes] = await Promise.all([
         API.get("/products"),
@@ -120,22 +253,25 @@ const Transfers = () => {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchTransfers();
     fetchRefs();
-  }, []);
+  }, [fetchTransfers, fetchRefs]);
 
-  const canActOnWarehouse = (warehouse) => {
-    if (!user) return false;
-    if (isAdmin) return true;
-    const whId = warehouse?._id || warehouse;
-    if (!whId || !Array.isArray(user.warehouses)) return false;
-    return user.warehouses.some(
-      (w) => (w?._id ? w._id.toString() : w.toString()) === whId.toString()
-    );
-  };
+  const canActOnWarehouse = useCallback(
+    (warehouse) => {
+      if (!user) return false;
+      if (isAdmin) return true;
+      const whId = warehouse?._id || warehouse;
+      if (!whId || !Array.isArray(user.warehouses)) return false;
+      return user.warehouses.some(
+        (w) => (w?._id ? w._id.toString() : w.toString()) === whId.toString()
+      );
+    },
+    [isAdmin, user]
+  );
 
   const handleInitiateSubmit = async (e) => {
     e.preventDefault();
@@ -178,53 +314,67 @@ const Transfers = () => {
     }
   };
 
-  const handleConfirm = async (transfer) => {
-    if (!canActOnWarehouse(transfer.toWarehouse)) {
-      toast.error("You do not have access to destination warehouse");
-      return;
-    }
+  const handleConfirm = useCallback(
+    async (transfer) => {
+      if (!canActOnWarehouse(transfer.toWarehouse)) {
+        toast.error("You do not have access to destination warehouse");
+        return;
+      }
 
-    const previousTransfers = transfers;
-    setTransfers((prev) =>
-      prev.map((t) => (t._id === transfer._id ? { ...t, status: "received" } : t))
-    );
+      const previousTransfers = transfers;
+      // Optimistic UI update
+      setTransfers((prev) =>
+        prev.map((t) =>
+          t._id === transfer._id ? { ...t, status: "received", _optimistic: true } : t
+        )
+      );
 
-    setActionLoadingId(transfer._id);
-    try {
-      await API.post(`/transfers/${transfer._id}/confirm`);
-      toast.success("Transfer confirmed! Stock credited to destination.");
-      fetchTransfers();
-    } catch (err) {
-      setTransfers(previousTransfers);
-      toast.error(err.response?.data?.message || "Failed to confirm transfer");
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
+      setActionLoadingId(transfer._id);
+      try {
+        await API.post(`/transfers/${transfer._id}/confirm`);
+        toast.success("Transfer confirmed! Stock credited to destination.");
+        fetchTransfers();
+      } catch (err) {
+        // Revert on failure
+        setTransfers(previousTransfers);
+        toast.error(err.response?.data?.message || "Failed to confirm transfer");
+      } finally {
+        setActionLoadingId(null);
+      }
+    },
+    [canActOnWarehouse, transfers, fetchTransfers]
+  );
 
-  const handleCancelSubmit = async (e) => {
-    e.preventDefault();
-    const { transfer, notes } = cancelModal;
-    if (!transfer) return;
+  const handleCancelSubmit = useCallback(
+    async (e) => {
+      e.preventDefault();
+      const { transfer, notes } = cancelModal;
+      if (!transfer) return;
 
-    const previousTransfers = transfers;
-    setTransfers((prev) =>
-      prev.map((t) => (t._id === transfer._id ? { ...t, status: "cancelled" } : t))
-    );
+      const previousTransfers = transfers;
+      // Optimistic UI update
+      setTransfers((prev) =>
+        prev.map((t) =>
+          t._id === transfer._id ? { ...t, status: "cancelled", _optimistic: true } : t
+        )
+      );
 
-    setActionLoadingId(transfer._id);
-    try {
-      await API.post(`/transfers/${transfer._id}/cancel`, { notes });
-      toast.success("Transfer cancelled. Stock restored to source warehouse.");
-      setCancelModal({ open: false, transfer: null, notes: "" });
-      fetchTransfers();
-    } catch (err) {
-      setTransfers(previousTransfers);
-      toast.error(err.response?.data?.message || "Failed to cancel transfer");
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
+      setActionLoadingId(transfer._id);
+      try {
+        await API.post(`/transfers/${transfer._id}/cancel`, { notes });
+        toast.success("Transfer cancelled. Stock restored to source warehouse.");
+        setCancelModal({ open: false, transfer: null, notes: "" });
+        fetchTransfers();
+      } catch (err) {
+        // Revert on failure
+        setTransfers(previousTransfers);
+        toast.error(err.response?.data?.message || "Failed to cancel transfer");
+      } finally {
+        setActionLoadingId(null);
+      }
+    },
+    [cancelModal, transfers, fetchTransfers]
+  );
 
   const filteredTransfers = useMemo(
     () =>
@@ -235,7 +385,10 @@ const Transfers = () => {
     [transfers, activeTab]
   );
 
-  const inTransitCount = transfers.filter((t) => t.status === "in_transit").length;
+  const inTransitCount = useMemo(
+    () => transfers.filter((t) => t.status === "in_transit").length,
+    [transfers]
+  );
 
   return (
     <div>
@@ -321,133 +474,23 @@ const Transfers = () => {
               <span>Received / Cancelled</span>
               <span style={{ textAlign: "right" }}>Actions</span>
             </div>
-            {filteredTransfers.map((t) => {
-              const s = STATUS_STYLES[t.status] || STATUS_STYLES.in_transit;
-              const StatusIcon = s.icon;
-              const canConfirm = canActOnWarehouse(t.toWarehouse);
-              const canCancel = canActOnWarehouse(t.fromWarehouse);
-              const isActing = actionLoadingId === t._id;
-
-              return (
-                <div key={t._id} style={styles.tableRow}>
-                  <div>
-                    <div style={styles.boldCell}>{t.product?.name || "—"}</div>
-                    <div style={styles.subCell}>{t.product?.sku || "SKU-UNKNOWN"}</div>
-                  </div>
-
-                  <div style={styles.routeCell}>
-                    <span style={styles.sourceTag}>
-                      {t.fromWarehouse?.name || "—"}
-                    </span>
-                    <ArrowRight size={14} color="#94a3b8" />
-                    <span style={styles.destTag}>
-                      {t.toWarehouse?.name || "—"}
-                    </span>
-                  </div>
-
-                  <div>
-                    <span style={styles.qtyCell}>{t.quantity}</span>
-                  </div>
-
-                  <div>
-                    <span
-                      style={{
-                        ...styles.statusBadge,
-                        background: s.bg,
-                        color: s.color,
-                        borderColor: s.border,
-                      }}
-                    >
-                      <StatusIcon size={12} />
-                      <span>{s.label}</span>
-                    </span>
-                  </div>
-
-                  <div>
-                    <div style={styles.subCellBold}>
-                      {t.initiatedBy?.name || "Admin"}
-                    </div>
-                    <div style={styles.subCell}>
-                      {t.initiatedAt
-                        ? new Date(t.initiatedAt).toLocaleDateString()
-                        : "—"}
-                    </div>
-                  </div>
-
-                  <div>
-                    {t.status === "received" && (
-                      <>
-                        <div style={styles.subCellBold}>
-                          {t.receivedBy?.name || "Staff"}
-                        </div>
-                        <div style={styles.subCell}>
-                          {t.receivedAt
-                            ? new Date(t.receivedAt).toLocaleDateString()
-                            : "—"}
-                        </div>
-                      </>
-                    )}
-                    {t.status === "cancelled" && (
-                      <div style={styles.subCell}>
-                        {t.cancelledAt
-                          ? new Date(t.cancelledAt).toLocaleDateString()
-                          : "—"}
-                      </div>
-                    )}
-                    {t.status === "in_transit" && (
-                      <span style={styles.pendingText}>Awaiting Arrival</span>
-                    )}
-                  </div>
-
-                  <div style={styles.actionCell}>
-                    {t.status === "in_transit" ? (
-                      <div style={styles.btnGroup}>
-                        <button
-                          style={{
-                            ...styles.confirmBtn,
-                            ...(!canConfirm ? styles.btnDisabled : {}),
-                          }}
-                          disabled={!canConfirm || isActing}
-                          title={
-                            canConfirm
-                              ? "Confirm receipt and credit stock to destination"
-                              : "You don't have access to destination warehouse"
-                          }
-                          onClick={() => handleConfirm(t)}
-                        >
-                          <CheckCircle2 size={14} />
-                          <span>Receive</span>
-                        </button>
-                        <button
-                          style={{
-                            ...styles.cancelBtn,
-                            ...(!canCancel ? styles.btnDisabled : {}),
-                          }}
-                          disabled={!canCancel || isActing}
-                          title={
-                            canCancel
-                              ? "Cancel transfer and return stock to source"
-                              : "You don't have access to source warehouse"
-                          }
-                          onClick={() =>
-                            setCancelModal({
-                              open: true,
-                              transfer: t,
-                              notes: "",
-                            })
-                          }
-                        >
-                          <Ban size={14} />
-                          <span>Cancel</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <span style={styles.closedText}>Completed</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {filteredTransfers.map((t) => (
+              <TransferCard
+                key={t._id}
+                transfer={t}
+                canConfirm={canActOnWarehouse(t.toWarehouse)}
+                canCancel={canActOnWarehouse(t.fromWarehouse)}
+                isActing={actionLoadingId === t._id}
+                onConfirm={handleConfirm}
+                onOpenCancel={(transfer) =>
+                  setCancelModal({
+                    open: true,
+                    transfer,
+                    notes: "",
+                  })
+                }
+              />
+            ))}
           </div>
         )}
       </div>

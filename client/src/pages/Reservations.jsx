@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import {
   BookmarkCheck,
   Plus,
@@ -47,6 +47,161 @@ const STATUS_CONFIG = {
   },
 };
 
+const ReservationRow = memo(({
+  r,
+  now,
+  copiedId,
+  actionLoadingId,
+  canAct,
+  handleCopy,
+  openConfirmModal,
+  handleReleaseReservation,
+  countdownText,
+  isPastDue,
+}) => {
+  const statusConf = STATUS_CONFIG[r.status] || STATUS_CONFIG.pending;
+  const StatusIcon = statusConf.icon;
+  const isPending = r.status === "pending";
+  const isActionLoading = actionLoadingId === r.reservationId;
+
+  return (
+    <tr key={r._id} style={{ ...styles.tr, opacity: r._optimistic ? 0.75 : 1 }}>
+      <td style={styles.td}>
+        <div style={styles.idContainer}>
+          <span style={styles.codeText}>{r.reservationId}</span>
+          <button
+            style={styles.copyBtn}
+            onClick={() => handleCopy(r.reservationId)}
+            title="Copy ID"
+          >
+            {copiedId === r.reservationId ? (
+              <Check size={13} color="#16a34a" />
+            ) : (
+              <Copy size={13} color="#94a3b8" />
+            )}
+          </button>
+        </div>
+      </td>
+
+      <td style={styles.td}>
+        <div style={styles.productName}>
+          {r.product?.name || "Product"}
+        </div>
+        <div style={styles.productSku}>
+          {r.product?.sku || "SKU N/A"}
+        </div>
+      </td>
+
+      <td style={styles.td}>
+        <div style={styles.whName}>
+          {r.warehouse?.name || "Warehouse"}
+        </div>
+        <div style={styles.whSub}>
+          {r.warehouse?.address || "Primary Hub"}
+        </div>
+      </td>
+
+      <td style={styles.td}>
+        <span style={styles.qtyBadge}>
+          {r.quantity.toLocaleString()} units
+        </span>
+      </td>
+
+      <td style={styles.td}>
+        {r.clientReference ? (
+          <span style={styles.refBadge}>{r.clientReference}</span>
+        ) : (
+          <span style={styles.mutedText}>—</span>
+        )}
+      </td>
+
+      <td style={styles.td}>
+        <div style={styles.statusCol}>
+          <span
+            style={{
+              ...styles.statusBadge,
+              backgroundColor: statusConf.bg,
+              color: statusConf.color,
+              borderColor: statusConf.border,
+            }}
+          >
+            <StatusIcon size={13} />
+            <span>{statusConf.label}</span>
+          </span>
+
+          {isPending && (
+            <span
+              style={{
+                ...styles.countdownTag,
+                color: isPastDue ? "#dc2626" : "#b45309",
+              }}
+            >
+              <Clock size={11} />
+              <span>{countdownText}</span>
+            </span>
+          )}
+        </div>
+      </td>
+
+      <td style={styles.td}>
+        <span style={styles.timeText}>
+          {new Date(r.createdAt).toLocaleString(undefined, {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </span>
+      </td>
+
+      <td style={{ ...styles.td, textAlign: "right" }}>
+        {isPending ? (
+          <div style={styles.actionButtons}>
+            <button
+              style={{
+                ...styles.confirmBtn,
+                opacity: !canAct || isActionLoading ? 0.6 : 1,
+                cursor:
+                  !canAct || isActionLoading ? "not-allowed" : "pointer",
+              }}
+              disabled={!canAct || isActionLoading}
+              onClick={() => openConfirmModal(r)}
+              title={
+                !canAct
+                  ? "Permission required for this warehouse"
+                  : "Fulfill / Deduct Stock"
+              }
+            >
+              Confirm
+            </button>
+            <button
+              style={{
+                ...styles.releaseBtn,
+                opacity: !canAct || isActionLoading ? 0.6 : 1,
+                cursor:
+                  !canAct || isActionLoading ? "not-allowed" : "pointer",
+              }}
+              disabled={!canAct || isActionLoading}
+              onClick={() => handleReleaseReservation(r)}
+              title={
+                !canAct
+                  ? "Permission required for this warehouse"
+                  : "Release reserved units back to available stock"
+              }
+            >
+              Release
+            </button>
+          </div>
+        ) : (
+          <span style={styles.mutedText}>No actions</span>
+        )}
+      </td>
+    </tr>
+  );
+});
+
+ReservationRow.displayName = "ReservationRow";
+
 const Reservations = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -85,17 +240,20 @@ const Reservations = () => {
     return () => clearInterval(timer);
   }, []);
 
-  const canActOnWarehouse = (warehouseId) => {
-    if (isAdmin) return true;
-    if (!user?.warehouses || !warehouseId) return false;
-    const targetId = typeof warehouseId === "object" ? warehouseId._id : warehouseId;
-    return user.warehouses.some((w) => {
-      const userWhId = typeof w === "object" ? w._id : w;
-      return userWhId?.toString() === targetId?.toString();
-    });
-  };
+  const canActOnWarehouse = useCallback(
+    (warehouseId) => {
+      if (isAdmin) return true;
+      if (!user?.warehouses || !warehouseId) return false;
+      const targetId = typeof warehouseId === "object" ? warehouseId._id : warehouseId;
+      return user.warehouses.some((w) => {
+        const userWhId = typeof w === "object" ? w._id : w;
+        return userWhId?.toString() === targetId?.toString();
+      });
+    },
+    [isAdmin, user]
+  );
 
-  const fetchReservations = async () => {
+  const fetchReservations = useCallback(async () => {
     try {
       setLoading(true);
       const params = {};
@@ -108,9 +266,9 @@ const Reservations = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filterProduct, filterWarehouse]);
 
-  const fetchRefs = async () => {
+  const fetchRefs = useCallback(async () => {
     try {
       const [prodRes, whRes] = await Promise.all([
         API.get("/products"),
@@ -121,9 +279,9 @@ const Reservations = () => {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, []);
 
-  const fetchWarehouseStock = async (whId) => {
+  const fetchWarehouseStock = useCallback(async (whId) => {
     if (!whId) return;
     try {
       const res = await API.get(`/stock/warehouse/${whId}`);
@@ -141,15 +299,15 @@ const Reservations = () => {
     } catch (err) {
       console.error(err);
     }
-  };
-
-  useEffect(() => {
-    fetchRefs();
   }, []);
 
   useEffect(() => {
+    fetchRefs();
+  }, [fetchRefs]);
+
+  useEffect(() => {
     fetchReservations();
-  }, [filterProduct, filterWarehouse]);
+  }, [fetchReservations]);
 
   useEffect(() => {
     if (form.warehouseId) {
@@ -157,14 +315,14 @@ const Reservations = () => {
     } else {
       setStockMap({});
     }
-  }, [form.warehouseId]);
+  }, [form.warehouseId, fetchWarehouseStock]);
 
-  const handleCopy = (id) => {
+  const handleCopy = useCallback((id) => {
     navigator.clipboard.writeText(id);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 1500);
     toast.success("Reservation ID copied to clipboard");
-  };
+  }, []);
 
   const handleCreateReservation = async (e) => {
     e.preventDefault();
@@ -197,41 +355,43 @@ const Reservations = () => {
     }
   };
 
-  const openConfirmModal = (r) => {
+  const openConfirmModal = useCallback((r) => {
     setConfirmModal({
       open: true,
       reservation: r,
       orderId: r.clientReference || "",
     });
-  };
+  }, []);
 
-  const handleConfirmReservation = async () => {
+  const handleConfirmReservation = useCallback(async () => {
     if (!confirmModal.reservation) return;
     const rId = confirmModal.reservation.reservationId;
     const previous = reservations;
 
+    // Optimistic UI update
     setReservations((prev) =>
-      prev.map((r) => (r.reservationId === rId ? { ...r, status: "confirmed" } : r))
+      prev.map((r) => (r.reservationId === rId ? { ...r, status: "confirmed", _optimistic: true } : r))
     );
-
+    setConfirmModal({ open: false, reservation: null, orderId: "" });
     setActionLoadingId(rId);
+
     try {
       await API.post("/stock/confirm", {
         reservationId: rId,
         orderId: confirmModal.orderId.trim() || undefined,
       });
       toast.success(`Hold ${rId} confirmed & stock permanently deducted!`);
-      setConfirmModal({ open: false, reservation: null, orderId: "" });
       fetchReservations();
     } catch (err) {
+      // Revert optimistic update on failure
       setReservations(previous);
       toast.error(err.response?.data?.message || "Failed to confirm reservation");
     } finally {
       setActionLoadingId(null);
     }
-  };
+  }, [confirmModal, reservations, fetchReservations]);
 
-  const handleReleaseReservation = async (r) => {
+  const handleReleaseReservation = useCallback(async (r) => {
     if (
       !window.confirm(
         `Release hold ${r.reservationId}? The ${r.quantity} held units will immediately return to available stock.`
@@ -241,9 +401,10 @@ const Reservations = () => {
     }
 
     const previous = reservations;
+    // Optimistic UI update
     setReservations((prev) =>
       prev.map((item) =>
-        item.reservationId === r.reservationId ? { ...item, status: "released" } : item
+        item.reservationId === r.reservationId ? { ...item, status: "released", _optimistic: true } : item
       )
     );
 
@@ -253,12 +414,13 @@ const Reservations = () => {
       toast.success(`Hold ${r.reservationId} released. Stock returned.`);
       fetchReservations();
     } catch (err) {
+      // Revert optimistic update on failure
       setReservations(previous);
       toast.error(err.response?.data?.message || "Failed to release reservation");
     } finally {
       setActionLoadingId(null);
     }
-  };
+  }, [reservations, fetchReservations]);
 
   const filteredReservations = useMemo(
     () =>
@@ -269,18 +431,26 @@ const Reservations = () => {
     [reservations, activeTab]
   );
 
-  const getCountdown = (expiresAt) => {
+  const getCountdown = useCallback((expiresAt) => {
     if (!expiresAt) return null;
     const diff = new Date(expiresAt).getTime() - now;
     if (diff <= 0) return "Expired (queue releasing)";
     const minutes = Math.floor(diff / 60000);
     const seconds = Math.floor((diff % 60000) / 1000);
     return `${minutes}m ${seconds < 10 ? "0" : ""}${seconds}s left`;
-  };
+  }, [now]);
 
-  const pendingCount = reservations.filter((r) => r.status === "pending").length;
-  const confirmedCount = reservations.filter((r) => r.status === "confirmed").length;
-  const releasedCount = reservations.filter((r) => r.status === "released").length;
+  const { pendingCount, confirmedCount, releasedCount } = useMemo(() => {
+    let p = 0;
+    let c = 0;
+    let rel = 0;
+    reservations.forEach((r) => {
+      if (r.status === "pending") p++;
+      else if (r.status === "confirmed") c++;
+      else if (r.status === "released") rel++;
+    });
+    return { pendingCount: p, confirmedCount: c, releasedCount: rel };
+  }, [reservations]);
 
   const currentAvailableToPromise =
     form.productId && stockMap[form.productId]
@@ -426,151 +596,21 @@ const Reservations = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredReservations.map((r) => {
-                  const statusConf = STATUS_CONFIG[r.status] || STATUS_CONFIG.pending;
-                  const StatusIcon = statusConf.icon;
-                  const isPending = r.status === "pending";
-                  const canAct = canActOnWarehouse(r.warehouse?._id || r.warehouse);
-                  const isActionLoading = actionLoadingId === r.reservationId;
-                  const countdownText = isPending ? getCountdown(r.expiresAt) : null;
-                  const isPastDue =
-                    isPending && new Date(r.expiresAt).getTime() <= now;
-
-                  return (
-                    <tr key={r._id} style={styles.tr}>
-                      <td style={styles.td}>
-                        <div style={styles.idContainer}>
-                          <span style={styles.codeText}>{r.reservationId}</span>
-                          <button
-                            style={styles.copyBtn}
-                            onClick={() => handleCopy(r.reservationId)}
-                            title="Copy ID"
-                          >
-                            {copiedId === r.reservationId ? (
-                              <Check size={13} color="#16a34a" />
-                            ) : (
-                              <Copy size={13} color="#94a3b8" />
-                            )}
-                          </button>
-                        </div>
-                      </td>
-
-                      <td style={styles.td}>
-                        <div style={styles.productName}>
-                          {r.product?.name || "Product"}
-                        </div>
-                        <div style={styles.productSku}>
-                          {r.product?.sku || "SKU N/A"}
-                        </div>
-                      </td>
-
-                      <td style={styles.td}>
-                        <div style={styles.whName}>
-                          {r.warehouse?.name || "Warehouse"}
-                        </div>
-                        <div style={styles.whSub}>
-                          {r.warehouse?.address || "Primary Hub"}
-                        </div>
-                      </td>
-
-                      <td style={styles.td}>
-                        <span style={styles.qtyBadge}>
-                          {r.quantity.toLocaleString()} units
-                        </span>
-                      </td>
-
-                      <td style={styles.td}>
-                        {r.clientReference ? (
-                          <span style={styles.refBadge}>{r.clientReference}</span>
-                        ) : (
-                          <span style={styles.mutedText}>—</span>
-                        )}
-                      </td>
-
-                      <td style={styles.td}>
-                        <div style={styles.statusCol}>
-                          <span
-                            style={{
-                              ...styles.statusBadge,
-                              backgroundColor: statusConf.bg,
-                              color: statusConf.color,
-                              borderColor: statusConf.border,
-                            }}
-                          >
-                            <StatusIcon size={13} />
-                            <span>{statusConf.label}</span>
-                          </span>
-
-                          {isPending && (
-                            <span
-                              style={{
-                                ...styles.countdownTag,
-                                color: isPastDue ? "#dc2626" : "#b45309",
-                              }}
-                            >
-                              <Clock size={11} />
-                              <span>{countdownText}</span>
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td style={styles.td}>
-                        <span style={styles.timeText}>
-                          {new Date(r.createdAt).toLocaleString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                      </td>
-
-                      <td style={{ ...styles.td, textAlign: "right" }}>
-                        {isPending ? (
-                          <div style={styles.actionButtons}>
-                            <button
-                              style={{
-                                ...styles.confirmBtn,
-                                opacity: !canAct || isActionLoading ? 0.6 : 1,
-                                cursor:
-                                  !canAct || isActionLoading ? "not-allowed" : "pointer",
-                              }}
-                              disabled={!canAct || isActionLoading}
-                              onClick={() => openConfirmModal(r)}
-                              title={
-                                !canAct
-                                  ? "Permission required for this warehouse"
-                                  : "Fulfill / Deduct Stock"
-                              }
-                            >
-                              Confirm
-                            </button>
-                            <button
-                              style={{
-                                ...styles.releaseBtn,
-                                opacity: !canAct || isActionLoading ? 0.6 : 1,
-                                cursor:
-                                  !canAct || isActionLoading ? "not-allowed" : "pointer",
-                              }}
-                              disabled={!canAct || isActionLoading}
-                              onClick={() => handleReleaseReservation(r)}
-                              title={
-                                !canAct
-                                  ? "Permission required for this warehouse"
-                                  : "Release reserved units back to available stock"
-                              }
-                            >
-                              Release
-                            </button>
-                          </div>
-                        ) : (
-                          <span style={styles.mutedText}>No actions</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                {filteredReservations.map((r) => (
+                  <ReservationRow
+                    key={r._id}
+                    r={r}
+                    now={now}
+                    copiedId={copiedId}
+                    actionLoadingId={actionLoadingId}
+                    canAct={canActOnWarehouse(r.warehouse?._id || r.warehouse)}
+                    handleCopy={handleCopy}
+                    openConfirmModal={openConfirmModal}
+                    handleReleaseReservation={handleReleaseReservation}
+                    countdownText={r.status === "pending" ? getCountdown(r.expiresAt) : null}
+                    isPastDue={r.status === "pending" && new Date(r.expiresAt).getTime() <= now}
+                  />
+                ))}
               </tbody>
             </table>
           </div>

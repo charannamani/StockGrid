@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { ArrowLeftRight, Plus, X, AlertTriangle, CheckCircle2, Sparkles } from "lucide-react";
+import { useEffect, useState, useMemo, useCallback, memo } from "react";
+import { ArrowLeftRight, Plus, X, AlertTriangle, CheckCircle2, Sparkles, RefreshCw } from "lucide-react";
 import API from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 import { getAccessibleWarehouses } from "../utils/warehouseScope";
+import VirtualTable from "../components/VirtualTable";
 import toast from "react-hot-toast";
 
 const TYPE_STYLES = {
@@ -13,7 +14,69 @@ const TYPE_STYLES = {
   adjustment: { label: "Adjustment", bg: "#f1f5f9", color: "#64748b" },
 };
 
-const emptyMovementForm = { product: "", warehouse: "", type: "inbound", quantity: "", direction: "increase", reason: "" };
+const emptyMovementForm = {
+  product: "",
+  warehouse: "",
+  type: "inbound",
+  quantity: "",
+  direction: "increase",
+  reason: "",
+};
+
+// Memoized MovementRow for performance
+const MovementRow = memo(({ movement }) => {
+  const t = TYPE_STYLES[movement.type] || TYPE_STYLES.adjustment;
+  const isOut =
+    movement.type === "outbound" ||
+    movement.type === "transfer_out" ||
+    (movement.type === "adjustment" && movement.direction === "decrease");
+
+  return (
+    <div
+      style={{
+        ...styles.tableRow,
+        opacity: movement._optimistic ? 0.75 : 1,
+        background: movement._optimistic ? "#fffbf0" : "transparent",
+      }}
+    >
+      <div>
+        <div style={styles.tableCellBold}>
+          {movement.product?.name || "—"}
+          {movement._optimistic && (
+            <span style={styles.optimisticBadge}>
+              <RefreshCw size={10} className="spin" /> Syncing
+            </span>
+          )}
+        </div>
+        <div style={styles.tableCellSub}>{movement.product?.sku || "SKU-UNKNOWN"}</div>
+      </div>
+      <div>
+        <span style={{ ...styles.badge, background: t.bg, color: t.color }}>{t.label}</span>
+      </div>
+      <div>
+        <span
+          style={{
+            ...styles.qtyPill,
+            ...(isOut ? styles.qtyPillOut : styles.qtyPillIn),
+          }}
+        >
+          {isOut ? "-" : "+"}
+          {movement.quantity?.toLocaleString() || 0}
+        </span>
+      </div>
+      <span style={styles.tableCell}>
+        {movement.warehouse?.name || "—"}{" "}
+        {movement.warehouse?.address ? `(${movement.warehouse.address.split(",")[0]})` : ""}
+      </span>
+      <span style={styles.tableCell}>{movement.performedBy?.name || "External API"}</span>
+      <span style={styles.tableCell}>
+        {movement.createdAt ? new Date(movement.createdAt).toLocaleDateString() : "—"}
+      </span>
+    </div>
+  );
+});
+
+MovementRow.displayName = "MovementRow";
 
 const MovementHistory = () => {
   const { user } = useAuth();
@@ -22,7 +85,13 @@ const MovementHistory = () => {
   const [movements, setMovements] = useState([]);
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
-  const accessibleWarehouses = getAccessibleWarehouses(warehouses, user);
+
+  // Memoize accessibleWarehouses based on current user role and assignments
+  const accessibleWarehouses = useMemo(
+    () => getAccessibleWarehouses(warehouses, user),
+    [warehouses, user]
+  );
+
   const [filters, setFilters] = useState({ product: "", warehouse: "" });
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -30,7 +99,7 @@ const MovementHistory = () => {
   const [saving, setSaving] = useState(false);
   const [warehouseCapacities, setWarehouseCapacities] = useState({});
 
-  const fetchMovements = async (activeFilters = filters) => {
+  const fetchMovements = useCallback(async (activeFilters = filters) => {
     try {
       const params = {};
       if (activeFilters.product) params.product = activeFilters.product;
@@ -43,30 +112,36 @@ const MovementHistory = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
 
-  const fetchCapacityMeta = async (whList) => {
+  // Scope capacity fetching to accessibleWarehouses only
+  const fetchCapacityMeta = useCallback(async (whList) => {
+    if (!Array.isArray(whList) || whList.length === 0) return;
     try {
       const capacityMap = {};
       await Promise.all(
         whList.map(async (w) => {
-          const res = await API.get(`/stock/warehouse/${w._id}`);
-          const data = res.data;
-          capacityMap[w._id] = {
-            totalOccupancy: data.totalOccupancy || 0,
-            capacity: data.capacity,
-            spaceLeft: data.spaceLeft,
-            isOverCapacity: data.isOverCapacity,
-            address: w.address || "",
-            stock: Array.isArray(data) ? data : (data.stock || []),
-          };
+          try {
+            const res = await API.get(`/stock/warehouse/${w._id}`);
+            const data = res.data;
+            capacityMap[w._id] = {
+              totalOccupancy: data.totalOccupancy || 0,
+              capacity: data.capacity,
+              spaceLeft: data.spaceLeft,
+              isOverCapacity: data.isOverCapacity,
+              address: w.address || "",
+              stock: Array.isArray(data) ? data : (data.stock || []),
+            };
+          } catch {
+            // Silently ignore individual warehouse capacity lookup errors
+          }
         })
       );
-      setWarehouseCapacities(capacityMap);
+      setWarehouseCapacities((prev) => ({ ...prev, ...capacityMap }));
     } catch (err) {
-      console.error(err);
+      console.error("Error fetching capacity metadata:", err);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const fetchRefs = async () => {
@@ -78,30 +153,66 @@ const MovementHistory = () => {
         const whList = warehousesRes.data || [];
         setProducts(productsRes.data || []);
         setWarehouses(whList);
-        fetchCapacityMeta(whList);
+
+        // Scope capacity fetch strictly to accessible warehouses
+        const accessible = getAccessibleWarehouses(whList, user);
+        fetchCapacityMeta(accessible);
       } catch (err) {
         toast.error("Couldn't load products/warehouses");
       }
     };
     fetchRefs();
     fetchMovements();
-  }, []);
+  }, [fetchMovements, fetchCapacityMeta, user]);
 
-  const applyFilters = (next) => {
+  const applyFilters = useCallback((next) => {
     setFilters(next);
     fetchMovements(next);
-  };
+  }, [fetchMovements]);
 
-  const openForm = () => {
+  const openForm = useCallback(() => {
     setMovementForm(emptyMovementForm);
     setShowForm(true);
-  };
+  }, []);
 
-  const closeForm = () => setShowForm(false);
+  const closeForm = useCallback(() => setShowForm(false), []);
 
   const handleMovementSubmit = async (e) => {
     e.preventDefault();
+
+    // Client-side guard: prevent non-admin from targeting an unauthorized warehouse
+    if (!isAdmin) {
+      const isAllowed = accessibleWarehouses.some(
+        (w) => (w._id ? w._id.toString() : w.toString()) === movementForm.warehouse?.toString()
+      );
+      if (!isAllowed) {
+        toast.error("Access denied: You do not have permissions for this warehouse.");
+        return;
+      }
+    }
+
+    const matchedProd = products.find((p) => p._id === movementForm.product);
+    const matchedWh = warehouses.find((w) => w._id === movementForm.warehouse);
+
+    // Optimistic UI: create temporary movement entry and prepend to ledger immediately
+    const optimisticId = `opt_${Date.now()}`;
+    const optimisticMovement = {
+      _id: optimisticId,
+      product: matchedProd || { name: "Selected Product", sku: "—" },
+      warehouse: matchedWh || { name: "Selected Facility" },
+      type: movementForm.type,
+      quantity: Number(movementForm.quantity),
+      direction: movementForm.type === "adjustment" ? movementForm.direction : undefined,
+      reason: movementForm.reason,
+      performedBy: { name: user?.name || "Current User", email: user?.email },
+      createdAt: new Date().toISOString(),
+      _optimistic: true,
+    };
+
+    setMovements((prev) => [optimisticMovement, ...prev]);
+    closeForm();
     setSaving(true);
+
     try {
       const payload = {
         productId: movementForm.product,
@@ -111,13 +222,19 @@ const MovementHistory = () => {
         reason: movementForm.reason,
         ...(movementForm.type === "adjustment" ? { direction: movementForm.direction } : {}),
       };
-      await API.post("/movements", payload);
-      toast.success("Movement recorded");
-      closeForm();
-      fetchMovements();
-      fetchCapacityMeta(warehouses);
+
+      const res = await API.post("/movements", payload);
+      toast.success("Movement recorded successfully");
+
+      // Replace optimistic movement with confirmed record from backend
+      setMovements((prev) =>
+        prev.map((m) => (m._id === optimisticId ? res.data : m))
+      );
+      fetchCapacityMeta(accessibleWarehouses);
     } catch (err) {
-      toast.error(err.response?.data?.message || "Something went wrong");
+      // Revert optimistic update on failure
+      setMovements((prev) => prev.filter((m) => m._id !== optimisticId));
+      toast.error(err.response?.data?.message || "Failed to record movement");
     } finally {
       setSaving(false);
     }
@@ -163,6 +280,9 @@ const MovementHistory = () => {
     );
   };
 
+  // Filter options: for non-admins, restrict selectable warehouses to accessibleWarehouses
+  const filterWarehouseOptions = isAdmin ? warehouses : accessibleWarehouses;
+
   if (loading) return <div style={styles.loadingText}>Loading movement history...</div>;
 
   return (
@@ -194,8 +314,8 @@ const MovementHistory = () => {
           value={filters.warehouse}
           onChange={(e) => applyFilters({ ...filters, warehouse: e.target.value })}
         >
-          <option value="">All Warehouses</option>
-          {accessibleWarehouses.map((w) => (
+          <option value="">{isAdmin ? "All Warehouses" : "All Facilities"}</option>
+          {filterWarehouseOptions.map((w) => (
             <option key={w._id} value={w._id}>{w.name} - {w.address || "Main"}</option>
           ))}
         </select>
@@ -205,8 +325,13 @@ const MovementHistory = () => {
         {movements.length === 0 ? (
           <p style={styles.emptyText}>No movements match these filters.</p>
         ) : (
-          <div className="table-scroll-container">
-            <div style={styles.table}>
+          <VirtualTable
+            items={movements}
+            itemHeight={58}
+            maxHeight={600}
+            className="table-scroll-container"
+            style={styles.virtualTableContainer}
+            header={
               <div style={styles.tableHeaderRow}>
                 <span>Product</span>
                 <span>Type</span>
@@ -215,41 +340,9 @@ const MovementHistory = () => {
                 <span>Initiator</span>
                 <span>Date</span>
               </div>
-              {movements.map((m) => {
-                const t = TYPE_STYLES[m.type] || TYPE_STYLES.adjustment;
-                const isOut = m.type === "outbound" || m.type === "transfer_out" || (m.type === "adjustment" && m.direction === "decrease");
-                return (
-                  <div key={m._id} style={styles.tableRow}>
-                    <div>
-                      <div style={styles.tableCellBold}>{m.product?.name || "—"}</div>
-                      <div style={styles.tableCellSub}>{m.product?.sku || "SKU-UNKNOWN"}</div>
-                    </div>
-                    <div>
-                      <span style={{ ...styles.badge, background: t.bg, color: t.color }}>{t.label}</span>
-                    </div>
-                    <div>
-                      <span
-                        style={{
-                          ...styles.qtyPill,
-                          ...(isOut ? styles.qtyPillOut : styles.qtyPillIn),
-                        }}
-                      >
-                        {isOut ? "-" : "+"}
-                        {m.quantity?.toLocaleString() || 0}
-                      </span>
-                    </div>
-                    <span style={styles.tableCell}>
-                      {m.warehouse?.name || "—"} {m.warehouse?.address ? `(${m.warehouse.address.split(",")[0]})` : ""}
-                    </span>
-                    <span style={styles.tableCell}>{m.performedBy?.name || "External API"}</span>
-                    <span style={styles.tableCell}>
-                      {m.createdAt ? new Date(m.createdAt).toLocaleDateString() : "—"}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+            }
+            renderRow={(m) => <MovementRow key={m._id} movement={m} />}
+          />
         )}
       </div>
 
@@ -380,7 +473,7 @@ const styles = {
   select: { padding: "9px 12px", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "13px", background: "#fff" },
   section: { background: "#fff", borderRadius: "12px", padding: "8px 20px", border: "1px solid #e5e7eb" },
   emptyText: { fontSize: "13px", color: "#94a3b8", padding: "20px 0" },
-  table: { display: "flex", flexDirection: "column", minWidth: "760px", width: "100%" },
+  virtualTableContainer: { minWidth: "760px", width: "100%" },
   tableHeaderRow: {
     display: "grid",
     gridTemplateColumns: "minmax(180px, 1.8fr) minmax(95px, 1fr) minmax(90px, 0.8fr) minmax(180px, 1.8fr) minmax(120px, 1fr) minmax(90px, 0.9fr)",
@@ -392,19 +485,32 @@ const styles = {
     textTransform: "uppercase",
     letterSpacing: "0.03em",
     borderBottom: "1px solid #f1f5f9",
+    background: "#fff",
   },
   tableRow: {
     display: "grid",
     gridTemplateColumns: "minmax(180px, 1.8fr) minmax(95px, 1fr) minmax(90px, 0.8fr) minmax(180px, 1.8fr) minmax(120px, 1fr) minmax(90px, 0.9fr)",
     columnGap: "16px",
     alignItems: "center",
-    padding: "12px 0",
+    padding: "10px 0",
     borderBottom: "1px solid #f1f5f9",
     fontSize: "13px",
+    transition: "opacity 0.2s ease, background 0.2s ease",
   },
-  tableCellBold: { fontWeight: 600, color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  tableCellBold: { fontWeight: 600, color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: "6px" },
   tableCellSub: { fontSize: "11px", color: "#94a3b8", marginTop: "2px" },
   tableCell: { color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  optimisticBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "3px",
+    fontSize: "10px",
+    fontWeight: 600,
+    color: "#d97706",
+    background: "#fef3c7",
+    padding: "2px 6px",
+    borderRadius: "4px",
+  },
   qtyPill: {
     display: "inline-flex",
     alignItems: "center",
@@ -445,12 +551,6 @@ const styles = {
   modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" },
   modalTitle: { fontSize: "16px", fontWeight: 700, color: "#111827", margin: 0 },
   closeBtn: { border: "none", background: "transparent", color: "#94a3b8", cursor: "pointer" },
-  tabRow: { display: "flex", gap: "6px", marginBottom: "16px", background: "#f1f5f9", padding: "4px", borderRadius: "8px" },
-  tabBtn: {
-    flex: 1, padding: "8px", borderRadius: "6px", border: "none", background: "transparent",
-    color: "#64748b", fontSize: "12px", fontWeight: 600, cursor: "pointer",
-  },
-  tabBtnActive: { background: "#fff", color: "#111827", boxShadow: "0 1px 2px rgba(0,0,0,0.06)" },
   label: { display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "6px", marginTop: "12px" },
   input: { width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "14px", boxSizing: "border-box", fontFamily: "inherit" },
   submitBtn: {

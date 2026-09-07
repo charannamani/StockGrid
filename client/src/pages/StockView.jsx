@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, memo } from "react";
 import {
   Boxes,
   AlertTriangle,
@@ -14,6 +14,7 @@ import {
 import API from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 import { getAccessibleWarehouses } from "../utils/warehouseScope";
+import VirtualTable from "../components/VirtualTable";
 import toast from "react-hot-toast";
 
 const PRESET_DESTINATIONS = [
@@ -21,8 +22,61 @@ const PRESET_DESTINATIONS = [
   { label: "Mumbai Port Zone (Nariman Point)", lat: 18.9256, lng: 72.8242 },
   { label: "Delhi-NCR (Connaught Place)", lat: 28.6315, lng: 77.2167 },
   { label: "Hyderabad Central (Hitec City)", lat: 17.4435, lng: 78.3772 },
-  { label: "Kolkata Commercial Hub (Park Street)", lat: 22.5535, lng: 88.3518 },
 ];
+
+const StockRow = memo(({ entry }) => {
+  const isLow = entry.currentQuantity <= entry.lowStockThreshold;
+  const thresholdRatio = Math.min(
+    100,
+    Math.round((entry.currentQuantity / (entry.lowStockThreshold * 2 || 20)) * 100)
+  );
+
+  return (
+    <div style={styles.tableRow}>
+      <div style={styles.productCell}>
+        <span style={styles.productName}>{entry.product?.name || "—"}</span>
+        <span style={styles.productSku}>{entry.product?.sku || "SKU-UNKNOWN"}</span>
+      </div>
+
+      <div style={styles.categoryCell}>
+        {entry.product?.category || "—"}
+      </div>
+
+      <div style={styles.qtyCell}>{entry.currentQuantity}</div>
+
+      <div style={styles.thresholdCell}>
+        <div style={styles.thresholdMeta}>
+          <span>{entry.currentQuantity} / {entry.lowStockThreshold} Min</span>
+        </div>
+        <div style={styles.progressTrack}>
+          <div
+            style={{
+              ...styles.progressFill,
+              width: `${thresholdRatio}%`,
+              background: isLow ? "#dc2626" : "#16a34a",
+            }}
+          />
+        </div>
+      </div>
+
+      <div style={{ textAlign: "right" }}>
+        {isLow ? (
+          <span style={styles.badgeLow}>
+            <AlertTriangle size={12} style={{ marginRight: "4px" }} />
+            Low Stock Alert
+          </span>
+        ) : (
+          <span style={styles.badgeOk}>
+            <CheckCircle2 size={12} style={{ marginRight: "4px" }} />
+            Optimal Level
+          </span>
+        )}
+      </div>
+    </div>
+  );
+});
+
+StockRow.displayName = "StockRow";
 
 const StockView = () => {
   const { user } = useAuth();
@@ -464,65 +518,21 @@ const StockView = () => {
           </div>
         ) : (
           <div style={styles.tableWrapper}>
-            <div style={styles.tableHeaderRow}>
-              <span>PRODUCT / SKU</span>
-              <span>CATEGORY</span>
-              <span style={{ textAlign: "right" }}>ON-HAND QTY</span>
-              <span>SAFETY THRESHOLD</span>
-              <span style={{ textAlign: "right" }}>FACILITY STATUS</span>
-            </div>
-
-            {filteredStock.map((entry) => {
-              const isLow = entry.currentQuantity <= entry.lowStockThreshold;
-              const thresholdRatio = Math.min(
-                100,
-                Math.round((entry.currentQuantity / (entry.lowStockThreshold * 2 || 20)) * 100)
-              );
-
-              return (
-                <div key={entry._id} style={styles.tableRow}>
-                  <div style={styles.productCell}>
-                    <span style={styles.productName}>{entry.product?.name || "—"}</span>
-                    <span style={styles.productSku}>{entry.product?.sku || "SKU-UNKNOWN"}</span>
-                  </div>
-
-                  <div style={styles.categoryCell}>
-                    {entry.product?.category || "—"}
-                  </div>
-
-                  <div style={styles.qtyCell}>{entry.currentQuantity}</div>
-
-                  <div style={styles.thresholdCell}>
-                    <div style={styles.thresholdMeta}>
-                      <span>{entry.currentQuantity} / {entry.lowStockThreshold} Min</span>
-                    </div>
-                    <div style={styles.progressTrack}>
-                      <div
-                        style={{
-                          ...styles.progressFill,
-                          width: `${thresholdRatio}%`,
-                          background: isLow ? "#dc2626" : "#16a34a",
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div style={{ textAlign: "right" }}>
-                    {isLow ? (
-                      <span style={styles.badgeLow}>
-                        <AlertTriangle size={12} style={{ marginRight: "4px" }} />
-                        Low Stock Alert
-                      </span>
-                    ) : (
-                      <span style={styles.badgeOk}>
-                        <CheckCircle2 size={12} style={{ marginRight: "4px" }} />
-                        Optimal Level
-                      </span>
-                    )}
-                  </div>
+            <VirtualTable
+              items={filteredStock}
+              itemHeight={64}
+              maxHeight={560}
+              header={
+                <div style={styles.tableHeaderRow}>
+                  <span>PRODUCT / SKU</span>
+                  <span>CATEGORY</span>
+                  <span style={{ textAlign: "right" }}>ON-HAND QTY</span>
+                  <span>SAFETY THRESHOLD</span>
+                  <span style={{ textAlign: "right" }}>FACILITY STATUS</span>
                 </div>
-              );
-            })}
+              }
+              renderRow={(entry) => <StockRow key={entry._id} entry={entry} />}
+            />
           </div>
         )}
       </div>
