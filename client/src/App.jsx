@@ -23,15 +23,19 @@ const PageFallback = () => (
   <div
     style={{
       display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
+      flexDirection: "column",
+      gap: "16px",
+      padding: "32px 0",
       minHeight: "40vh",
-      color: "#94a3b8",
-      fontSize: "13px",
-      fontWeight: 500,
     }}
   >
-    Loading view...
+    <div className="skeleton" style={{ width: "260px", height: "28px" }} />
+    <div className="skeleton" style={{ width: "180px", height: "16px" }} />
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px", marginTop: "16px" }}>
+      <div className="skeleton" style={{ height: "120px", borderRadius: "12px" }} />
+      <div className="skeleton" style={{ height: "120px", borderRadius: "12px" }} />
+      <div className="skeleton" style={{ height: "120px", borderRadius: "12px" }} />
+    </div>
   </div>
 );
 

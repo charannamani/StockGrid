@@ -166,7 +166,7 @@ const ApiKeys = () => {
             </div>
 
             {keys.map((k) => (
-              <div key={k._id} style={styles.tableRow}>
+              <div key={k._id} className="row-hover" style={styles.tableRow}>
                 <div style={styles.nameCell}>
                   <div style={styles.keyIcon}>
                     <KeyRound size={15} color="#ea580c" />
@@ -346,11 +346,13 @@ const styles = {
   },
   tableRow: {
     display: "grid",
-    gridTemplateColumns: "1.8fr 1.4fr 2fr 1fr 0.8fr",
+    gridTemplateColumns: "2.2fr 1.5fr 2fr 1.2fr 1fr",
     alignItems: "center",
     padding: "14px 20px",
     borderBottom: "1px solid #f1f5f9",
     fontSize: "13px",
+    transition: "background-color 0.15s ease",
+    cursor: "default",
   },
   nameCell: { display: "flex", alignItems: "center", gap: "10px" },
   keyIcon: {
@@ -407,13 +409,22 @@ const styles = {
     position: "fixed",
     inset: 0,
     background: "rgba(15, 23, 42, 0.45)",
-    backdropFilter: "blur(8px)",
+    backdropFilter: "blur(12px)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     zIndex: 50,
+    animation: "backdropEnter 0.2s ease both",
   },
-  modal: { background: "#fff", borderRadius: "16px", padding: "28px", width: "440px", maxWidth: "92vw" },
+  modal: {
+    background: "#fff",
+    borderRadius: "16px",
+    padding: "28px",
+    width: "440px",
+    maxWidth: "92vw",
+    boxShadow: "0 20px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.05)",
+    animation: "modalEnter 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+  },
   modalHeader: { display: "flex", justifyContent: "space-between", marginBottom: "20px" },
   modalTitle: { fontSize: "18px", fontWeight: 700, color: "#0f172a", margin: 0 },
   modalSubtitle: { fontSize: "12px", color: "#64748b", marginTop: "4px" },

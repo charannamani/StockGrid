@@ -11,21 +11,21 @@ import {
   Users,
   KeyRound,
   LogOut,
-  Sparkles,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useState } from "react";
 
 const navSections = [
   {
     title: "OPERATIONS",
     items: [
-      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/warehouses", label: "Warehouses", icon: Warehouse },
-      { to: "/products", label: "Product Catalog", icon: Package },
-      { to: "/stock", label: "Inventory & Router", icon: Boxes },
-      { to: "/movements", label: "Movement Ledger", icon: ArrowLeftRight },
-      { to: "/transfers", label: "Stock Transfers", icon: Truck },
-      { to: "/reservations", label: "Stock Reservations", icon: BookmarkCheck },
+      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, shortcut: "D" },
+      { to: "/warehouses", label: "Warehouses", icon: Warehouse, shortcut: "W" },
+      { to: "/products", label: "Product Catalog", icon: Package, shortcut: "P" },
+      { to: "/stock", label: "Inventory & Router", icon: Boxes, shortcut: "I" },
+      { to: "/movements", label: "Movement Ledger", icon: ArrowLeftRight, shortcut: "M" },
+      { to: "/transfers", label: "Stock Transfers", icon: Truck, shortcut: "T" },
+      { to: "/reservations", label: "Stock Reservations", icon: BookmarkCheck, shortcut: "R" },
     ],
   },
   {
@@ -41,6 +41,7 @@ const navSections = [
 const Sidebar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [hoveredItem, setHoveredItem] = useState(null);
 
   const handleLogout = () => {
     logout();
@@ -79,14 +80,17 @@ const Sidebar = () => {
             <div key={section.title} style={styles.sectionGroup}>
               <div style={styles.sectionHeading}>{section.title}</div>
               <div style={styles.sectionItems}>
-                {section.items.map(({ to, label, icon: Icon }) => (
+                {section.items.map(({ to, label, icon: Icon, shortcut }) => (
                   <NavLink
                     key={to}
                     to={to}
                     style={({ isActive }) => ({
                       ...styles.navLink,
                       ...(isActive ? styles.navLinkActive : {}),
+                      ...(hoveredItem === to && !isActive ? styles.navLinkHover : {}),
                     })}
+                    onMouseEnter={() => setHoveredItem(to)}
+                    onMouseLeave={() => setHoveredItem(null)}
                   >
                     {({ isActive }) => (
                       <>
@@ -99,6 +103,14 @@ const Sidebar = () => {
                           <Icon size={16} strokeWidth={isActive ? 2.2 : 1.8} />
                         </div>
                         <span style={styles.navLabel}>{label}</span>
+                        {shortcut && (
+                          <span style={{
+                            ...styles.shortcutHint,
+                            opacity: isActive || hoveredItem === to ? 1 : 0,
+                          }}>
+                            {shortcut}
+                          </span>
+                        )}
                         {isActive && <div style={styles.activeIndicator} />}
                       </>
                     )}
@@ -233,6 +245,7 @@ const styles = {
     borderRadius: "50%",
     backgroundColor: "#10b981",
     boxShadow: "0 0 6px #10b981",
+    animation: "pulseLive 2s ease-in-out infinite",
   },
   brandSub: {
     fontSize: "11px",
@@ -275,12 +288,16 @@ const styles = {
     fontWeight: 500,
     textDecoration: "none",
     position: "relative",
-    transition: "all 0.15s ease",
+    transition: "all 0.18s cubic-bezier(0.4, 0, 0.2, 1)",
   },
   navLinkActive: {
     background: "linear-gradient(135deg, #fff7ed, #ffedd5)",
     color: "#ea580c",
     fontWeight: 600,
+  },
+  navLinkHover: {
+    background: "#f8fafc",
+    color: "#334155",
   },
   iconWrapper: {
     display: "flex",
@@ -297,6 +314,18 @@ const styles = {
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
+  },
+  shortcutHint: {
+    fontSize: "10px",
+    fontWeight: 600,
+    color: "#94a3b8",
+    background: "#f1f5f9",
+    border: "1px solid #e2e8f0",
+    padding: "1px 5px",
+    borderRadius: "4px",
+    fontFamily: "var(--font-mono, monospace)",
+    transition: "opacity 0.15s ease",
+    lineHeight: "1.4",
   },
   activeIndicator: {
     width: "4px",

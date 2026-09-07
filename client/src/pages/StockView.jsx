@@ -33,7 +33,7 @@ const StockRow = memo(({ entry }) => {
   );
 
   return (
-    <div style={styles.tableRow}>
+    <div className="row-hover" style={styles.tableRow}>
       <div style={styles.productCell}>
         <span style={styles.productName}>{entry.product?.name || "—"}</span>
         <span style={styles.productSku}>{entry.product?.sku || "SKU-UNKNOWN"}</span>
@@ -766,6 +766,8 @@ const styles = {
     padding: "14px 20px",
     borderBottom: "1px solid #f1f5f9",
     fontSize: "13px",
+    transition: "background-color 0.15s ease",
+    cursor: "default",
   },
   productCell: { display: "flex", flexDirection: "column" },
   productName: { fontWeight: 600, color: "#0f172a" },

@@ -66,7 +66,7 @@ const ReservationRow = memo(({
   const isActionLoading = actionLoadingId === r.reservationId;
 
   return (
-    <tr key={r._id} style={{ ...styles.tr, opacity: r._optimistic ? 0.75 : 1 }}>
+    <tr key={r._id} className="row-hover" style={{ ...styles.tr, opacity: r._optimistic ? 0.75 : 1 }}>
       <td style={styles.td}>
         <div style={styles.idContainer}>
           <span style={styles.codeText}>{r.reservationId}</span>
@@ -1017,7 +1017,8 @@ const styles = {
   },
   tr: {
     borderBottom: "1px solid #f1f5f9",
-    transition: "background 0.1s",
+    transition: "background-color 0.15s ease",
+    cursor: "default",
   },
   td: {
     padding: "13px 16px",
@@ -1149,13 +1150,14 @@ const styles = {
   overlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(15, 23, 42, 0.5)",
-    backdropFilter: "blur(4px)",
+    background: "rgba(15, 23, 42, 0.45)",
+    backdropFilter: "blur(12px)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     zIndex: 1000,
     padding: "20px",
+    animation: "backdropEnter 0.2s ease both",
   },
   modal: {
     background: "#ffffff",
@@ -1164,6 +1166,7 @@ const styles = {
     maxWidth: "500px",
     padding: "24px",
     boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
+    animation: "modalEnter 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both",
   },
   modalHeader: {
     display: "flex",

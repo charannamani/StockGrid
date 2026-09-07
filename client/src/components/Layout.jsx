@@ -1,7 +1,8 @@
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar";
-import { Activity, ShieldCheck, Zap } from "lucide-react";
+import { ChevronRight, Zap } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useRef, useEffect, useState } from "react";
 
 const PAGE_TITLES = {
   "/dashboard": { title: "Executive Dashboard", category: "Network Overview" },
@@ -18,10 +19,17 @@ const PAGE_TITLES = {
 const Layout = () => {
   const location = useLocation();
   const { user } = useAuth();
+  const contentRef = useRef(null);
+  const [pageKey, setPageKey] = useState(location.pathname);
   const currentMeta = PAGE_TITLES[location.pathname] || {
     title: "StockGrid System",
     category: "Management Console",
   };
+
+  // Re-trigger page entrance animation on route change
+  useEffect(() => {
+    setPageKey(location.pathname);
+  }, [location.pathname]);
 
   return (
     <div style={styles.container}>
@@ -31,6 +39,7 @@ const Layout = () => {
         <header style={styles.topHeader}>
           <div style={styles.headerLeft}>
             <div style={styles.categoryBreadcrumb}>{currentMeta.category}</div>
+            <ChevronRight size={12} color="#cbd5e1" style={{ flexShrink: 0 }} />
             <div style={styles.pageIndicatorTitle}>{currentMeta.title}</div>
           </div>
 
@@ -47,9 +56,9 @@ const Layout = () => {
           </div>
         </header>
 
-        {/* Page Content */}
+        {/* Page Content with entrance animation */}
         <main style={styles.content}>
-          <div style={styles.contentInner}>
+          <div key={pageKey} className="page-enter" style={styles.contentInner}>
             <Outlet />
           </div>
         </main>
@@ -136,6 +145,7 @@ const styles = {
     height: "6px",
     borderRadius: "50%",
     backgroundColor: "#10b981",
+    animation: "pulseLive 2s ease-in-out infinite",
   },
   content: {
     flex: 1,

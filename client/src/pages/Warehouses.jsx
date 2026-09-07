@@ -316,12 +316,14 @@ const styles = {
   emptyText: { fontSize: "14px", color: "#94a3b8" },
   loadingText: { padding: "40px", color: "#94a3b8", fontSize: "14px", textAlign: "center" },
   overlay: {
-    position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.45)", backdropFilter: "blur(8px)",
+    position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.45)", backdropFilter: "blur(12px)",
     display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50,
+    animation: "backdropEnter 0.2s ease both",
   },
   modal: {
     background: "#fff", borderRadius: "16px", padding: "26px", width: "420px", maxWidth: "90vw",
     boxShadow: "0 20px 25px -5px rgba(15, 23, 42, 0.1), 0 8px 10px -6px rgba(15, 23, 42, 0.05)",
+    animation: "modalEnter 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both",
   },
   modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "18px" },
   modalTitle: { fontSize: "18px", fontWeight: 700, color: "#0f172a", margin: 0 },

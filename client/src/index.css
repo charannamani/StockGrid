@@ -76,7 +76,7 @@ html, body {
   flex-direction: column;
 }
 
-/* Modern clean scrollbars */
+/* ── Modern clean scrollbars ── */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -89,17 +89,54 @@ html, body {
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 999px;
+  transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
 
-/* Animations */
+/* ── Focus Visible Accessibility Ring ── */
+:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--brand-400);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+}
+
+/* ── Animations ── */
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeScale {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
   }
   to {
     opacity: 1;
@@ -113,8 +150,8 @@ html, body {
     opacity: 1;
   }
   50% {
-    transform: scale(1.15);
-    opacity: 0.7;
+    transform: scale(1.4);
+    opacity: 0.5;
   }
 }
 
@@ -127,18 +164,63 @@ html, body {
   }
 }
 
-/* Global button and interactive resets */
-button {
-  font-family: inherit;
-  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+@keyframes modalEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
-button:active {
-  transform: scale(0.98);
+@keyframes backdropEnter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes progressGrow {
+  from { width: 0; }
+}
+
+@keyframes gradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ── Global button and interactive resets ── */
+button {
+  font-family: inherit;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 input, select, textarea {
   font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 /* Micro typography */
@@ -146,7 +228,7 @@ code, pre {
   font-family: var(--font-mono);
 }
 
-/* Dashboard responsive main grid */
+/* ── Dashboard responsive main grid ── */
 .dashboard-main-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -165,3 +247,41 @@ code, pre {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
+
+/* ── Page entrance animation ── */
+.page-enter {
+  animation: fadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* ── Skeleton Shimmer ── */
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* ── Glass Overlay ── */
+.glass-overlay {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: backdropEnter 0.2s ease both;
+}
+
+/* ── Modal animation ── */
+.modal-enter {
+  animation: modalEnter 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* ── Row hover utility ── */
+.row-hover:hover {
+  background-color: #fafbfe !important;
+}
+
+/* ── Staggered entrance utility ── */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }

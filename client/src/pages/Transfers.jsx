@@ -61,6 +61,7 @@ const TransferCard = memo(({
 
   return (
     <div
+      className="row-hover"
       style={{
         ...styles.tableRow,
         opacity: transfer._optimistic ? 0.75 : 1,
@@ -820,6 +821,8 @@ const styles = {
     borderBottom: "1px solid #f1f5f9",
     alignItems: "center",
     fontSize: "13px",
+    transition: "background-color 0.15s ease",
+    cursor: "default",
   },
   boldCell: { fontWeight: 600, color: "#111827" },
   subCell: { fontSize: "12px", color: "#94a3b8", marginTop: "2px" },
@@ -891,11 +894,12 @@ const styles = {
     position: "fixed",
     inset: 0,
     background: "rgba(15, 23, 42, 0.45)",
-    backdropFilter: "blur(8px)",
+    backdropFilter: "blur(12px)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     zIndex: 50,
+    animation: "backdropEnter 0.2s ease both",
   },
   modal: {
     background: "#fff",
@@ -904,6 +908,7 @@ const styles = {
     width: "480px",
     maxWidth: "92vw",
     boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
+    animation: "modalEnter 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both",
   },
   modalHeader: {
     display: "flex",

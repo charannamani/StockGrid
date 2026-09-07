@@ -89,5 +89,5 @@ jobs:
           script: |
             cd StockGrid
             git pull origin main
-            docker compose down
-            docker compose up -d --build
+            docker compose -f docker-compose.prod.yml down
+            docker compose -f docker-compose.prod.yml up -d --build

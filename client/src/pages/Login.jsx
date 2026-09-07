@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { User, Lock, Grid3x3 } from "lucide-react";
+import { User, Lock, Grid3x3, Eye, EyeOff, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -27,6 +28,11 @@ const Login = () => {
 
   return (
     <div style={styles.page}>
+      {/* Animated gradient background */}
+      <div style={styles.bgOrb1} />
+      <div style={styles.bgOrb2} />
+      <div style={styles.bgOrb3} />
+
       <div style={styles.header}>
         <div style={styles.logoBox}>
           <Grid3x3 size={28} color="#fff" strokeWidth={2.5} />
@@ -52,23 +58,41 @@ const Login = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 style={styles.input}
+                id="login-email"
               />
             </div>
 
             <div style={styles.inputWrapper}>
               <Lock size={18} color="#94a3b8" style={styles.inputIcon} />
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 style={styles.input}
+                id="login-password"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={styles.eyeBtn}
+                tabIndex={-1}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
 
-            <button type="submit" disabled={loading} style={styles.button}>
-              {loading ? "Logging in..." : "Log In"}
+            <button type="submit" disabled={loading} style={styles.button} id="login-submit">
+              {loading ? (
+                <span style={styles.btnLoading}>
+                  <Loader2 size={18} className="spin" />
+                  Logging in...
+                </span>
+              ) : (
+                "Log In"
+              )}
             </button>
           </form>
 
@@ -89,14 +113,53 @@ const styles = {
     minHeight: "100vh",
     display: "flex",
     flexDirection: "column",
+    position: "relative",
+    overflow: "hidden",
+  },
+  bgOrb1: {
+    position: "fixed",
+    width: "600px",
+    height: "600px",
+    borderRadius: "50%",
+    background: "radial-gradient(circle, rgba(239, 68, 68, 0.15) 0%, transparent 70%)",
+    top: "-200px",
+    right: "-100px",
+    pointerEvents: "none",
+    animation: "gradientShift 8s ease-in-out infinite",
+  },
+  bgOrb2: {
+    position: "fixed",
+    width: "500px",
+    height: "500px",
+    borderRadius: "50%",
+    background: "radial-gradient(circle, rgba(245, 158, 11, 0.12) 0%, transparent 70%)",
+    bottom: "-150px",
+    left: "-100px",
+    pointerEvents: "none",
+    animation: "gradientShift 10s ease-in-out infinite reverse",
+  },
+  bgOrb3: {
+    position: "fixed",
+    width: "400px",
+    height: "400px",
+    borderRadius: "50%",
+    background: "radial-gradient(circle, rgba(249, 115, 22, 0.1) 0%, transparent 70%)",
+    top: "50%",
+    left: "50%",
+    transform: "translate(-50%, -50%)",
+    pointerEvents: "none",
+    animation: "gradientShift 12s ease-in-out infinite",
   },
   header: {
     display: "flex",
     alignItems: "center",
     gap: "12px",
     padding: "20px 40px",
-    backgroundColor: "#fff",
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    backdropFilter: "blur(10px)",
     borderBottom: "1px solid #e5e7eb",
+    position: "relative",
+    zIndex: 2,
   },
   logoBox: {
     width: "40px",
@@ -106,6 +169,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    boxShadow: "0 4px 12px rgba(239, 68, 68, 0.3)",
   },
   logoText: {
     fontSize: "20px",
@@ -124,6 +188,8 @@ const styles = {
     justifyContent: "center",
     background: "linear-gradient(135deg, #ef4444, #f97316, #f59e0b)",
     padding: "40px 20px",
+    position: "relative",
+    zIndex: 1,
   },
   card: {
     backgroundColor: "#fff",
@@ -131,7 +197,8 @@ const styles = {
     padding: "48px 40px",
     width: "100%",
     maxWidth: "420px",
-    boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+    boxShadow: "0 20px 60px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.1)",
+    animation: "modalEnter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both",
   },
   heading: {
     fontSize: "28px",
@@ -155,15 +222,30 @@ const styles = {
     left: "14px",
     top: "50%",
     transform: "translateY(-50%)",
+    pointerEvents: "none",
   },
   input: {
     width: "100%",
-    padding: "14px 14px 14px 42px",
+    padding: "14px 42px 14px 42px",
     borderRadius: "10px",
     border: "1.5px solid #e2e8f0",
     fontSize: "14px",
     outline: "none",
     boxSizing: "border-box",
+    transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+  },
+  eyeBtn: {
+    position: "absolute",
+    right: "12px",
+    top: "50%",
+    transform: "translateY(-50%)",
+    background: "transparent",
+    border: "none",
+    color: "#94a3b8",
+    cursor: "pointer",
+    padding: "4px",
+    display: "flex",
+    alignItems: "center",
   },
   button: {
     width: "100%",
@@ -176,6 +258,14 @@ const styles = {
     fontWeight: 700,
     cursor: "pointer",
     marginTop: "8px",
+    boxShadow: "0 4px 14px rgba(239, 68, 68, 0.3)",
+    transition: "all 0.2s ease",
+  },
+  btnLoading: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
   },
   footerText: {
     textAlign: "center",

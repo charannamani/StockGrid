@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
   Package,
@@ -23,6 +23,33 @@ const TYPE_STYLES = {
   adjustment: { label: "Adjustment", bg: "#f8fafc", color: "#475569", border: "#e2e8f0" },
 };
 
+// Animated count-up hook
+const useCountUp = (target, duration = 800) => {
+  const [count, setCount] = useState(0);
+  const prevTarget = useRef(0);
+
+  useEffect(() => {
+    if (target === prevTarget.current) return;
+    const start = prevTarget.current;
+    prevTarget.current = target;
+    const startTime = performance.now();
+
+    const animate = (currentTime) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.round(start + (target - start) * eased);
+      setCount(current);
+      if (progress < 1) requestAnimationFrame(animate);
+    };
+
+    requestAnimationFrame(animate);
+  }, [target, duration]);
+
+  return count;
+};
+
 const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -35,6 +62,11 @@ const Dashboard = () => {
     warehouseDistribution: [],
   });
   const [loading, setLoading] = useState(true);
+
+  const animatedTotalStock = useCountUp(stats.totalStock);
+  const animatedWarehouses = useCountUp(stats.warehouseCount);
+  const animatedProducts = useCountUp(stats.productCount);
+  const animatedLowStock = useCountUp(stats.lowStockCount);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -93,11 +125,15 @@ const Dashboard = () => {
   if (loading) {
     return (
       <div style={styles.container}>
-        <div style={styles.headerSkeleton} />
+        <div className="skeleton" style={{ width: "300px", height: "40px", marginBottom: "24px" }} />
         <div style={styles.cardGrid}>
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} style={styles.cardSkeleton} />
+            <div key={i} className="skeleton" style={{ height: "140px", borderRadius: "14px" }} />
           ))}
+        </div>
+        <div style={{ display: "flex", gap: "24px", marginTop: "24px" }}>
+          <div className="skeleton" style={{ flex: 2, height: "300px", borderRadius: "14px" }} />
+          <div className="skeleton" style={{ flex: 1, height: "300px", borderRadius: "14px" }} />
         </div>
       </div>
     );
@@ -106,28 +142,28 @@ const Dashboard = () => {
   const cards = [
     {
       label: "Total Units Stored",
-      value: stats.totalStock.toLocaleString(),
+      value: animatedTotalStock.toLocaleString(),
       subtext: "Across all operational locations",
       icon: Boxes,
       alert: false,
     },
     {
       label: "Active Warehouses",
-      value: stats.warehouseCount,
+      value: animatedWarehouses,
       subtext: "Configured storage facilities",
       icon: Warehouse,
       alert: false,
     },
     {
       label: "Catalog SKUs",
-      value: stats.productCount,
+      value: animatedProducts,
       subtext: "Registered products in network",
       icon: Package,
       alert: false,
     },
     {
       label: "Low Stock Alerts",
-      value: stats.lowStockCount,
+      value: animatedLowStock,
       subtext: "Below safe reorder minimum",
       icon: AlertTriangle,
       alert: stats.lowStockCount > 0,
@@ -162,12 +198,13 @@ const Dashboard = () => {
       </div>
 
       <div style={styles.cardGrid}>
-        {cards.map(({ label, value, subtext, icon: Icon, alert }) => (
+        {cards.map(({ label, value, subtext, icon: Icon, alert }, idx) => (
           <div
             key={label}
             style={{
               ...styles.card,
               ...(alert ? styles.cardAlert : {}),
+              animation: `fadeScale 0.4s cubic-bezier(0.4, 0, 0.2, 1) ${idx * 0.08}s both`,
             }}
           >
             <div style={styles.cardTop}>
@@ -212,10 +249,17 @@ const Dashboard = () => {
                   <span>FACILITY</span>
                   <span style={{ textAlign: "right" }}>DATE</span>
                 </div>
-                {stats.movements.map((m) => {
+                {stats.movements.map((m, idx) => {
                   const typeStyle = TYPE_STYLES[m.type] || TYPE_STYLES.adjustment;
                   return (
-                    <div key={m._id} style={styles.tableRow}>
+                    <div
+                      key={m._id}
+                      className="row-hover"
+                      style={{
+                        ...styles.tableRow,
+                        animation: `fadeIn 0.3s ease ${idx * 0.05}s both`,
+                      }}
+                    >
                       <div style={styles.productCell}>
                         <span style={styles.productName}>{m.product?.name || "—"}</span>
                         <span style={styles.productSku}>{m.product?.sku || "SKU-UNKNOWN"}</span>
@@ -286,14 +330,20 @@ const Dashboard = () => {
             {stats.warehouseDistribution.length === 0 ? (
               <p style={styles.emptyText}>No warehouse locations active.</p>
             ) : (
-              stats.warehouseDistribution.map((wh) => {
+              stats.warehouseDistribution.map((wh, idx) => {
                 const percentage =
                   stats.totalStock > 0
                     ? Math.round((wh.stock / stats.totalStock) * 100)
                     : 0;
 
                 return (
-                  <div key={wh.name} style={styles.distItem}>
+                  <div
+                    key={wh.name}
+                    style={{
+                      ...styles.distItem,
+                      animation: `slideInUp 0.35s ease ${idx * 0.08}s both`,
+                    }}
+                  >
                     <div style={styles.distMeta}>
                       <span style={styles.distName}>{wh.name}</span>
                       <span style={styles.distValue}>
@@ -305,6 +355,7 @@ const Dashboard = () => {
                         style={{
                           ...styles.progressBarFill,
                           width: `${Math.min(percentage, 100)}%`,
+                          animation: `progressGrow 0.8s ease ${idx * 0.1 + 0.3}s both`,
                         }}
                       />
                     </div>
@@ -344,7 +395,14 @@ const styles = {
     fontSize: "12px",
     fontWeight: 600,
   },
-  liveDot: { width: "6px", height: "6px", borderRadius: "50%", background: "#16a34a" },
+  liveDot: {
+    width: "6px",
+    height: "6px",
+    borderRadius: "50%",
+    background: "#16a34a",
+    display: "inline-block",
+    animation: "pulseLive 2s ease-in-out infinite",
+  },
   actionGroup: { display: "flex", alignItems: "center", gap: "10px" },
   primaryBtn: {
     display: "flex",
@@ -358,6 +416,7 @@ const styles = {
     fontWeight: 600,
     fontSize: "13px",
     cursor: "pointer",
+    boxShadow: "0 4px 12px rgba(239, 68, 68, 0.25)",
   },
   secondaryBtn: {
     display: "flex",
@@ -386,6 +445,8 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     gap: "16px",
+    transition: "transform 0.2s ease, box-shadow 0.2s ease",
+    cursor: "default",
   },
   cardAlert: { borderColor: "#fca5a5", background: "#fff5f5" },
   cardTop: { display: "flex", justifyContent: "space-between", alignItems: "center" },
@@ -397,6 +458,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    boxShadow: "0 4px 10px rgba(239, 68, 68, 0.2)",
   },
   cardIconAlert: { background: "#dc2626" },
   alertBadge: {
@@ -410,7 +472,6 @@ const styles = {
   cardValue: { fontSize: "26px", fontWeight: 800, color: "#0f172a", lineHeight: "1.2" },
   cardLabel: { fontSize: "13px", fontWeight: 600, color: "#334155", marginTop: "2px" },
   cardSubtext: { fontSize: "11px", color: "#94a3b8", marginTop: "2px" },
-  mainGrid: { display: "grid", gridTemplateColumns: "1fr", gap: "24px", alignItems: "start" },
   feedSection: {
     background: "#ffffff",
     borderRadius: "14px",
@@ -437,6 +498,7 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "4px",
+    transition: "opacity 0.15s ease",
   },
   tableWrapper: { display: "flex", flexDirection: "column", minWidth: "680px", width: "100%" },
   tableHeaderRow: {
@@ -461,6 +523,8 @@ const styles = {
     padding: "12px 14px",
     borderBottom: "1px solid #f1f5f9",
     fontSize: "13px",
+    transition: "background-color 0.15s ease",
+    borderRadius: "6px",
   },
   productCell: { display: "flex", flexDirection: "column", minWidth: 0 },
   productName: { fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
@@ -533,8 +597,6 @@ const styles = {
     background: "linear-gradient(90deg, #ef4444, #f59e0b)",
     borderRadius: "999px",
   },
-  headerSkeleton: { width: "300px", height: "40px", background: "#e2e8f0", borderRadius: "8px", marginBottom: "24px" },
-  cardSkeleton: { height: "120px", background: "#ffffff", borderRadius: "14px", border: "1px solid #e2e8f0" },
 };
 
 export default Dashboard;
