@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Boxes,
   AlertTriangle,
@@ -12,17 +12,25 @@ import {
   ChevronUp,
 } from "lucide-react";
 import API from "../utils/api";
+import { useAuth } from "../context/AuthContext";
+import { getAccessibleWarehouses } from "../utils/warehouseScope";
 import toast from "react-hot-toast";
 
 const PRESET_DESTINATIONS = [
-  { label: "Hyderabad Central", lat: 17.3850, lng: 78.4867 },
-  { label: "Cyberabad / Hitec City", lat: 17.4435, lng: 78.3772 },
-  { label: "Bengaluru Hub", lat: 12.9716, lng: 77.5946 },
-  { label: "Mumbai Port Zone", lat: 18.9438, lng: 72.8354 },
+  { label: "Bengaluru Central (MG Road)", lat: 12.9716, lng: 77.5946 },
+  { label: "Mumbai Port Zone (Nariman Point)", lat: 18.9256, lng: 72.8242 },
+  { label: "Delhi-NCR (Connaught Place)", lat: 28.6315, lng: 77.2167 },
+  { label: "Hyderabad Central (Hitec City)", lat: 17.4435, lng: 78.3772 },
+  { label: "Kolkata Commercial Hub (Park Street)", lat: 22.5535, lng: 88.3518 },
 ];
 
 const StockView = () => {
+  const { user } = useAuth();
   const [warehouses, setWarehouses] = useState([]);
+  const accessibleWarehouses = useMemo(
+    () => getAccessibleWarehouses(warehouses, user),
+    [warehouses, user]
+  );
   const [products, setProducts] = useState([]);
   const [selectedWarehouse, setSelectedWarehouse] = useState("");
   const [stock, setStock] = useState([]);
@@ -57,7 +65,8 @@ const StockView = () => {
         const list = whRes.data || [];
         setWarehouses(list);
         setProducts(prodRes.data || []);
-        if (list.length > 0) setSelectedWarehouse(list[0]._id);
+        const accessible = getAccessibleWarehouses(list, user);
+        if (accessible.length > 0) setSelectedWarehouse(accessible[0]._id);
       } catch (err) {
         toast.error("Couldn't load network metadata");
       } finally {
@@ -90,17 +99,27 @@ const StockView = () => {
     fetchStock();
   }, [selectedWarehouse]);
 
-  const activeWarehouseObj = warehouses.find((w) => w._id === selectedWarehouse);
-
-  const filteredStock = stock.filter(
-    (entry) =>
-      entry.product?.name?.toLowerCase().includes(search.toLowerCase()) ||
-      entry.product?.sku?.toLowerCase().includes(search.toLowerCase())
+  const activeWarehouseObj = useMemo(
+    () => warehouses.find((w) => w._id === selectedWarehouse),
+    [warehouses, selectedWarehouse]
   );
 
-  const lowStockCount = stock.filter(
-    (entry) => entry.currentQuantity <= entry.lowStockThreshold
-  ).length;
+  const filteredStock = useMemo(
+    () =>
+      stock.filter(
+        (entry) =>
+          entry.product?.name?.toLowerCase().includes(search.toLowerCase()) ||
+          entry.product?.sku?.toLowerCase().includes(search.toLowerCase())
+      ),
+    [stock, search]
+  );
+
+  const lowStockCount = useMemo(
+    () =>
+      stock.filter((entry) => entry.currentQuantity <= entry.lowStockThreshold)
+        .length,
+    [stock]
+  );
 
   const handleSelectPreset = (preset) => {
     setDestLat(preset.lat);
@@ -370,11 +389,15 @@ const StockView = () => {
               value={selectedWarehouse}
               onChange={(e) => setSelectedWarehouse(e.target.value)}
             >
-              {warehouses.map((w) => (
-                <option key={w._id} value={w._id}>
-                  {w.name} — {w.address || "Main Distribution Hub"}
-                </option>
-              ))}
+              {accessibleWarehouses.length === 0 ? (
+                <option value="">No authorized warehouses assigned</option>
+              ) : (
+                accessibleWarehouses.map((w) => (
+                  <option key={w._id} value={w._id}>
+                    {w.name} — {w.address || "Main Distribution Hub"}
+                  </option>
+                ))
+              )}
             </select>
           </div>
         </div>

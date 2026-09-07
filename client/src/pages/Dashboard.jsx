@@ -150,7 +150,7 @@ const Dashboard = () => {
         </div>
 
         <div style={styles.actionGroup}>
-          <button style={styles.secondaryBtn} onClick={() => navigate("/availability")}>
+          <button style={styles.secondaryBtn} onClick={() => navigate("/stock")}>
             <Search size={16} />
             <span>Check Availability</span>
           </button>
@@ -185,7 +185,7 @@ const Dashboard = () => {
         ))}
       </div>
 
-      <div style={styles.mainGrid}>
+      <div className="dashboard-main-grid">
         <div style={styles.feedSection}>
           <div style={styles.sectionHeader}>
             <div style={styles.sectionTitleGroup}>
@@ -203,51 +203,70 @@ const Dashboard = () => {
               <p style={styles.emptyText}>No inventory movements recorded yet.</p>
             </div>
           ) : (
-            <div style={styles.tableWrapper}>
-              <div style={styles.tableHeaderRow}>
-                <span>PRODUCT / SKU</span>
-                <span>TYPE</span>
-                <span style={{ textAlign: "right" }}>QTY</span>
-                <span>FACILITY</span>
-                <span style={{ textAlign: "right" }}>DATE</span>
+            <div className="table-scroll-container">
+              <div style={styles.tableWrapper}>
+                <div style={styles.tableHeaderRow}>
+                  <span>PRODUCT / SKU</span>
+                  <span>TYPE</span>
+                  <span>QTY</span>
+                  <span>FACILITY</span>
+                  <span style={{ textAlign: "right" }}>DATE</span>
+                </div>
+                {stats.movements.map((m) => {
+                  const typeStyle = TYPE_STYLES[m.type] || TYPE_STYLES.adjustment;
+                  return (
+                    <div key={m._id} style={styles.tableRow}>
+                      <div style={styles.productCell}>
+                        <span style={styles.productName}>{m.product?.name || "—"}</span>
+                        <span style={styles.productSku}>{m.product?.sku || "SKU-UNKNOWN"}</span>
+                      </div>
+
+                      <div>
+                        <span
+                          style={{
+                            ...styles.badge,
+                            background: typeStyle.bg,
+                            color: typeStyle.color,
+                            borderColor: typeStyle.border,
+                          }}
+                        >
+                          {typeStyle.label}
+                        </span>
+                      </div>
+
+                      <div style={styles.qtyCell}>
+                        <span
+                          style={{
+                            ...styles.qtyPill,
+                            ...(m.type === "outbound" || m.type === "transfer_out"
+                              ? styles.qtyPillOut
+                              : styles.qtyPillIn),
+                          }}
+                        >
+                          {m.type === "outbound" || m.type === "transfer_out" ? "-" : "+"}
+                          {m.quantity?.toLocaleString() || 0}
+                        </span>
+                      </div>
+
+                      <div style={styles.locationCell}>
+                        <span style={styles.locationName} title={m.warehouse?.name || "—"}>
+                          {m.warehouse?.name || "—"}
+                        </span>
+                        {m.type === "transfer_out" && m.toWarehouse?.name && (
+                          <span style={styles.transferHint}>→ To: {m.toWarehouse.name}</span>
+                        )}
+                        {m.type === "transfer_in" && m.fromWarehouse?.name && (
+                          <span style={styles.transferHint}>← From: {m.fromWarehouse.name}</span>
+                        )}
+                      </div>
+
+                      <div style={styles.dateCell}>
+                        {m.createdAt ? new Date(m.createdAt).toLocaleDateString() : "—"}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              {stats.movements.map((m) => {
-                const typeStyle = TYPE_STYLES[m.type] || TYPE_STYLES.adjustment;
-                return (
-                  <div key={m._id} style={styles.tableRow}>
-                    <div style={styles.productCell}>
-                      <span style={styles.productName}>{m.product?.name || "—"}</span>
-                      <span style={styles.productSku}>{m.product?.sku || "SKU-UNKNOWN"}</span>
-                    </div>
-
-                    <div>
-                      <span
-                        style={{
-                          ...styles.badge,
-                          background: typeStyle.bg,
-                          color: typeStyle.color,
-                          borderColor: typeStyle.border,
-                        }}
-                      >
-                        {typeStyle.label}
-                      </span>
-                    </div>
-
-                    <div style={styles.qtyCell}>
-                      {m.type === "outbound" || m.type === "transfer_out" ? "-" : "+"}
-                      {m.quantity}
-                    </div>
-
-                    <div style={styles.locationCell}>
-                      {m.warehouse?.name || "—"}
-                    </div>
-
-                    <div style={styles.dateCell}>
-                      {m.createdAt ? new Date(m.createdAt).toLocaleDateString() : "—"}
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           )}
         </div>
@@ -419,10 +438,12 @@ const styles = {
     alignItems: "center",
     gap: "4px",
   },
-  tableWrapper: { display: "flex", flexDirection: "column", width: "100%" },
+  tableWrapper: { display: "flex", flexDirection: "column", minWidth: "680px", width: "100%" },
   tableHeaderRow: {
     display: "grid",
-    gridTemplateColumns: "2.5fr 1.2fr 1fr 1.5fr 1fr",
+    gridTemplateColumns: "minmax(190px, 2.2fr) minmax(95px, 1fr) minmax(85px, 0.9fr) minmax(180px, 2fr) minmax(90px, 0.9fr)",
+    columnGap: "18px",
+    alignItems: "center",
     padding: "10px 14px",
     background: "#f8fafc",
     borderRadius: "8px",
@@ -434,26 +455,71 @@ const styles = {
   },
   tableRow: {
     display: "grid",
-    gridTemplateColumns: "2.5fr 1.2fr 1fr 1.5fr 1fr",
+    gridTemplateColumns: "minmax(190px, 2.2fr) minmax(95px, 1fr) minmax(85px, 0.9fr) minmax(180px, 2fr) minmax(90px, 0.9fr)",
+    columnGap: "18px",
     alignItems: "center",
     padding: "12px 14px",
     borderBottom: "1px solid #f1f5f9",
     fontSize: "13px",
   },
-  productCell: { display: "flex", flexDirection: "column" },
-  productName: { fontWeight: 600, color: "#0f172a" },
+  productCell: { display: "flex", flexDirection: "column", minWidth: 0 },
+  productName: { fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   productSku: { fontSize: "11px", color: "#94a3b8" },
   badge: {
     fontSize: "11px",
     fontWeight: 600,
-    padding: "4px 10px",
+    padding: "3px 9px",
     borderRadius: "6px",
     border: "1px solid",
     display: "inline-block",
+    whiteSpace: "nowrap",
   },
-  qtyCell: { fontWeight: 700, color: "#0f172a", textAlign: "right" },
-  locationCell: { color: "#475569", fontWeight: 500 },
-  dateCell: { color: "#94a3b8", fontSize: "12px", textAlign: "right" },
+  qtyCell: { display: "flex", alignItems: "center" },
+  qtyPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "3px 9px",
+    borderRadius: "6px",
+    fontSize: "12px",
+    fontWeight: 700,
+    fontFamily: "var(--font-mono, monospace)",
+    letterSpacing: "-0.01em",
+    border: "1px solid",
+    whiteSpace: "nowrap",
+  },
+  qtyPillIn: {
+    background: "#f0fdf4",
+    color: "#16a34a",
+    borderColor: "#bbf7d0",
+  },
+  qtyPillOut: {
+    background: "#fef2f2",
+    color: "#dc2626",
+    borderColor: "#fecaca",
+  },
+  locationCell: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    minWidth: 0,
+  },
+  locationName: {
+    fontWeight: 600,
+    color: "#334155",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  transferHint: {
+    fontSize: "11px",
+    color: "#ea580c",
+    fontWeight: 500,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  dateCell: { color: "#94a3b8", fontSize: "12px", textAlign: "right", whiteSpace: "nowrap" },
   emptyState: { padding: "40px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" },
   emptyText: { fontSize: "13px", color: "#94a3b8" },
   distributionList: { display: "flex", flexDirection: "column", gap: "16px" },

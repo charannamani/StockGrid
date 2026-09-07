@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Truck,
   Plus,
@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import API from "../utils/api";
 import { useAuth } from "../context/AuthContext";
+import { getAccessibleWarehouses } from "../utils/warehouseScope";
 import toast from "react-hot-toast";
 
 const emptyForm = {
@@ -56,6 +57,10 @@ const Transfers = () => {
 
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
+  const accessibleWarehouses = useMemo(
+    () => getAccessibleWarehouses(warehouses, user),
+    [warehouses, user]
+  );
 
   const [showInitiateModal, setShowInitiateModal] = useState(false);
   const [initiateForm, setInitiateForm] = useState(emptyForm);
@@ -67,6 +72,30 @@ const Transfers = () => {
     notes: "",
   });
   const [actionLoadingId, setActionLoadingId] = useState(null);
+  const [sourceStockMap, setSourceStockMap] = useState({});
+
+  useEffect(() => {
+    if (initiateForm.fromWarehouse) {
+      API.get(`/stock/warehouse/${initiateForm.fromWarehouse}`)
+        .then((res) => {
+          const list = Array.isArray(res.data) ? res.data : res.data.stock || [];
+          const map = {};
+          list.forEach((item) => {
+            const pId = item.product?._id || item.product;
+            map[pId] = item.currentQuantity || 0;
+          });
+          setSourceStockMap(map);
+        })
+        .catch((err) => console.error(err));
+    } else {
+      setSourceStockMap({});
+    }
+  }, [initiateForm.fromWarehouse]);
+
+  const availableAtSource =
+    initiateForm.product && initiateForm.fromWarehouse
+      ? sourceStockMap[initiateForm.product] ?? 0
+      : null;
 
   const fetchTransfers = async () => {
     try {
@@ -121,6 +150,13 @@ const Transfers = () => {
       return;
     }
 
+    if (availableAtSource != null && Number(initiateForm.quantity) > availableAtSource) {
+      toast.error(
+        `Source warehouse only has ${availableAtSource} units available. Cannot transfer ${initiateForm.quantity}.`
+      );
+      return;
+    }
+
     setSubmitting(true);
     try {
       await API.post("/transfers", {
@@ -148,12 +184,18 @@ const Transfers = () => {
       return;
     }
 
+    const previousTransfers = transfers;
+    setTransfers((prev) =>
+      prev.map((t) => (t._id === transfer._id ? { ...t, status: "received" } : t))
+    );
+
     setActionLoadingId(transfer._id);
     try {
       await API.post(`/transfers/${transfer._id}/confirm`);
       toast.success("Transfer confirmed! Stock credited to destination.");
       fetchTransfers();
     } catch (err) {
+      setTransfers(previousTransfers);
       toast.error(err.response?.data?.message || "Failed to confirm transfer");
     } finally {
       setActionLoadingId(null);
@@ -165,6 +207,11 @@ const Transfers = () => {
     const { transfer, notes } = cancelModal;
     if (!transfer) return;
 
+    const previousTransfers = transfers;
+    setTransfers((prev) =>
+      prev.map((t) => (t._id === transfer._id ? { ...t, status: "cancelled" } : t))
+    );
+
     setActionLoadingId(transfer._id);
     try {
       await API.post(`/transfers/${transfer._id}/cancel`, { notes });
@@ -172,16 +219,21 @@ const Transfers = () => {
       setCancelModal({ open: false, transfer: null, notes: "" });
       fetchTransfers();
     } catch (err) {
+      setTransfers(previousTransfers);
       toast.error(err.response?.data?.message || "Failed to cancel transfer");
     } finally {
       setActionLoadingId(null);
     }
   };
 
-  const filteredTransfers = transfers.filter((t) => {
-    if (activeTab === "all") return true;
-    return t.status === activeTab;
-  });
+  const filteredTransfers = useMemo(
+    () =>
+      transfers.filter((t) => {
+        if (activeTab === "all") return true;
+        return t.status === activeTab;
+      }),
+    [transfers, activeTab]
+  );
 
   const inTransitCount = transfers.filter((t) => t.status === "in_transit").length;
 
@@ -451,7 +503,7 @@ const Transfers = () => {
                     required
                   >
                     <option value="">Select origin</option>
-                    {warehouses.map((w) => (
+                    {accessibleWarehouses.map((w) => (
                       <option key={w._id} value={w._id}>
                         {w.name}
                       </option>
@@ -491,11 +543,32 @@ const Transfers = () => {
                   </div>
                 )}
 
+              {initiateForm.product && initiateForm.fromWarehouse && (
+                <div style={styles.sourceStockBadge}>
+                  {availableAtSource != null && availableAtSource > 0 ? (
+                    <div style={styles.stockOk}>
+                      <CheckCircle2 size={13} color="#16a34a" />
+                      <span>
+                        Available at source warehouse: <strong>{availableAtSource} units</strong>
+                      </span>
+                    </div>
+                  ) : (
+                    <div style={styles.stockWarn}>
+                      <AlertCircle size={13} color="#dc2626" />
+                      <span>
+                        0 units of this product at source warehouse. Please record an Inbound Movement first.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <label style={styles.label}>Transfer Quantity</label>
               <input
                 style={styles.input}
                 type="number"
                 min="1"
+                max={availableAtSource != null && availableAtSource > 0 ? availableAtSource : undefined}
                 placeholder="e.g. 50"
                 value={initiateForm.quantity}
                 onChange={(e) =>
@@ -749,7 +822,8 @@ const styles = {
   overlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(15, 23, 42, 0.5)",
+    background: "rgba(15, 23, 42, 0.45)",
+    backdropFilter: "blur(8px)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -853,6 +927,28 @@ const styles = {
     fontSize: "14px",
     fontWeight: 600,
     cursor: "pointer",
+  },
+  sourceStockBadge: {
+    marginTop: "10px",
+    marginBottom: "6px",
+    padding: "8px 12px",
+    borderRadius: "8px",
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+  },
+  stockOk: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "#16a34a",
+    fontSize: "12px",
+  },
+  stockWarn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    color: "#dc2626",
+    fontSize: "12px",
   },
 };
 

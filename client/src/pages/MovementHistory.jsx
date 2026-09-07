@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeftRight, Plus, X, AlertTriangle, CheckCircle2, Sparkles } from "lucide-react";
 import API from "../utils/api";
 import { useAuth } from "../context/AuthContext";
+import { getAccessibleWarehouses } from "../utils/warehouseScope";
 import toast from "react-hot-toast";
 
 const TYPE_STYLES = {
@@ -21,6 +22,7 @@ const MovementHistory = () => {
   const [movements, setMovements] = useState([]);
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
+  const accessibleWarehouses = getAccessibleWarehouses(warehouses, user);
   const [filters, setFilters] = useState({ product: "", warehouse: "" });
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -193,7 +195,7 @@ const MovementHistory = () => {
           onChange={(e) => applyFilters({ ...filters, warehouse: e.target.value })}
         >
           <option value="">All Warehouses</option>
-          {warehouses.map((w) => (
+          {accessibleWarehouses.map((w) => (
             <option key={w._id} value={w._id}>{w.name} - {w.address || "Main"}</option>
           ))}
         </select>
@@ -203,37 +205,50 @@ const MovementHistory = () => {
         {movements.length === 0 ? (
           <p style={styles.emptyText}>No movements match these filters.</p>
         ) : (
-          <div style={styles.table}>
-            <div style={styles.tableHeaderRow}>
-              <span>Product</span>
-              <span>Type</span>
-              <span>Qty</span>
-              <span>Facility (Area)</span>
-              <span>Initiator</span>
-              <span>Date</span>
+          <div className="table-scroll-container">
+            <div style={styles.table}>
+              <div style={styles.tableHeaderRow}>
+                <span>Product</span>
+                <span>Type</span>
+                <span>Qty</span>
+                <span>Facility (Area)</span>
+                <span>Initiator</span>
+                <span>Date</span>
+              </div>
+              {movements.map((m) => {
+                const t = TYPE_STYLES[m.type] || TYPE_STYLES.adjustment;
+                const isOut = m.type === "outbound" || m.type === "transfer_out" || (m.type === "adjustment" && m.direction === "decrease");
+                return (
+                  <div key={m._id} style={styles.tableRow}>
+                    <div>
+                      <div style={styles.tableCellBold}>{m.product?.name || "—"}</div>
+                      <div style={styles.tableCellSub}>{m.product?.sku || "SKU-UNKNOWN"}</div>
+                    </div>
+                    <div>
+                      <span style={{ ...styles.badge, background: t.bg, color: t.color }}>{t.label}</span>
+                    </div>
+                    <div>
+                      <span
+                        style={{
+                          ...styles.qtyPill,
+                          ...(isOut ? styles.qtyPillOut : styles.qtyPillIn),
+                        }}
+                      >
+                        {isOut ? "-" : "+"}
+                        {m.quantity?.toLocaleString() || 0}
+                      </span>
+                    </div>
+                    <span style={styles.tableCell}>
+                      {m.warehouse?.name || "—"} {m.warehouse?.address ? `(${m.warehouse.address.split(",")[0]})` : ""}
+                    </span>
+                    <span style={styles.tableCell}>{m.performedBy?.name || "External API"}</span>
+                    <span style={styles.tableCell}>
+                      {m.createdAt ? new Date(m.createdAt).toLocaleDateString() : "—"}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-            {movements.map((m) => {
-              const t = TYPE_STYLES[m.type] || TYPE_STYLES.adjustment;
-              return (
-                <div key={m._id} style={styles.tableRow}>
-                  <div>
-                    <div style={styles.tableCellBold}>{m.product?.name || "—"}</div>
-                    <div style={styles.tableCellSub}>{m.product?.sku || "SKU-UNKNOWN"}</div>
-                  </div>
-                  <div>
-                    <span style={{ ...styles.badge, background: t.bg, color: t.color }}>{t.label}</span>
-                  </div>
-                  <span style={styles.tableCellBoldQty}>{m.quantity}</span>
-                  <span style={styles.tableCell}>
-                    {m.warehouse?.name || "—"} {m.warehouse?.address ? `(${m.warehouse.address})` : ""}
-                  </span>
-                  <span style={styles.tableCell}>{m.performedBy?.name || "External API"}</span>
-                  <span style={styles.tableCell}>
-                    {m.createdAt ? new Date(m.createdAt).toLocaleDateString() : "—"}
-                  </span>
-                </div>
-              );
-            })}
           </div>
         )}
       </div>
@@ -268,7 +283,7 @@ const MovementHistory = () => {
                 required
               >
                 <option value="">Select destination warehouse</option>
-                {warehouses.map((w) => (
+                {accessibleWarehouses.map((w) => (
                   <option key={w._id} value={w._id}>
                     {w.name} — {w.address || "Area Not Set"}
                   </option>
@@ -365,25 +380,66 @@ const styles = {
   select: { padding: "9px 12px", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "13px", background: "#fff" },
   section: { background: "#fff", borderRadius: "12px", padding: "8px 20px", border: "1px solid #e5e7eb" },
   emptyText: { fontSize: "13px", color: "#94a3b8", padding: "20px 0" },
-  table: { display: "flex", flexDirection: "column" },
+  table: { display: "flex", flexDirection: "column", minWidth: "760px", width: "100%" },
   tableHeaderRow: {
-    display: "grid", gridTemplateColumns: "1.5fr 1fr 0.6fr 1.6fr 1fr 1fr", padding: "12px 0",
-    fontSize: "11px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase",
-    letterSpacing: "0.03em", borderBottom: "1px solid #f1f5f9",
+    display: "grid",
+    gridTemplateColumns: "minmax(180px, 1.8fr) minmax(95px, 1fr) minmax(90px, 0.8fr) minmax(180px, 1.8fr) minmax(120px, 1fr) minmax(90px, 0.9fr)",
+    columnGap: "16px",
+    padding: "12px 0",
+    fontSize: "11px",
+    fontWeight: 700,
+    color: "#94a3b8",
+    textTransform: "uppercase",
+    letterSpacing: "0.03em",
+    borderBottom: "1px solid #f1f5f9",
   },
   tableRow: {
-    display: "grid", gridTemplateColumns: "1.5fr 1fr 0.6fr 1.6fr 1fr 1fr", alignItems: "center",
-    padding: "12px 0", borderBottom: "1px solid #f1f5f9", fontSize: "13px",
+    display: "grid",
+    gridTemplateColumns: "minmax(180px, 1.8fr) minmax(95px, 1fr) minmax(90px, 0.8fr) minmax(180px, 1.8fr) minmax(120px, 1fr) minmax(90px, 0.9fr)",
+    columnGap: "16px",
+    alignItems: "center",
+    padding: "12px 0",
+    borderBottom: "1px solid #f1f5f9",
+    fontSize: "13px",
   },
-  tableCellBold: { fontWeight: 600, color: "#111827" },
+  tableCellBold: { fontWeight: 600, color: "#111827", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   tableCellSub: { fontSize: "11px", color: "#94a3b8", marginTop: "2px" },
-  tableCellBoldQty: { fontWeight: 700, color: "#0f172a" },
-  tableCell: { color: "#64748b" },
-  badge: { fontSize: "11px", fontWeight: 600, padding: "3px 10px", borderRadius: "999px", width: "fit-content" },
+  tableCell: { color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  qtyPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "3px 9px",
+    borderRadius: "6px",
+    fontSize: "12px",
+    fontWeight: 700,
+    fontFamily: "var(--font-mono, monospace)",
+    letterSpacing: "-0.01em",
+    border: "1px solid",
+    whiteSpace: "nowrap",
+  },
+  qtyPillIn: {
+    background: "#f0fdf4",
+    color: "#16a34a",
+    borderColor: "#bbf7d0",
+  },
+  qtyPillOut: {
+    background: "#fef2f2",
+    color: "#dc2626",
+    borderColor: "#fecaca",
+  },
+  badge: { fontSize: "11px", fontWeight: 600, padding: "3px 10px", borderRadius: "999px", width: "fit-content", whiteSpace: "nowrap" },
   loadingText: { padding: "40px", color: "#94a3b8", fontSize: "14px" },
   overlay: {
-    position: "fixed", inset: 0, background: "rgba(15, 23, 42, 0.5)", display: "flex",
-    alignItems: "center", justifyContent: "center", zIndex: 50, padding: "20px",
+    position: "fixed",
+    inset: 0,
+    background: "rgba(15, 23, 42, 0.45)",
+    backdropFilter: "blur(8px)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 50,
+    padding: "20px",
   },
   modal: { background: "#fff", borderRadius: "14px", padding: "24px", width: "420px", maxWidth: "90vw", maxHeight: "85vh", overflowY: "auto" },
   modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" },

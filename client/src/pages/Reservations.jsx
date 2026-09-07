@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   BookmarkCheck,
   Plus,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import API from "../utils/api";
 import { useAuth } from "../context/AuthContext";
+import { getAccessibleWarehouses } from "../utils/warehouseScope";
 import toast from "react-hot-toast";
 
 const emptyForm = {
@@ -56,6 +57,10 @@ const Reservations = () => {
 
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
+  const accessibleWarehouses = useMemo(
+    () => getAccessibleWarehouses(warehouses, user),
+    [warehouses, user]
+  );
   const [stockMap, setStockMap] = useState({});
 
   const [filterProduct, setFilterProduct] = useState("");
@@ -203,6 +208,12 @@ const Reservations = () => {
   const handleConfirmReservation = async () => {
     if (!confirmModal.reservation) return;
     const rId = confirmModal.reservation.reservationId;
+    const previous = reservations;
+
+    setReservations((prev) =>
+      prev.map((r) => (r.reservationId === rId ? { ...r, status: "confirmed" } : r))
+    );
+
     setActionLoadingId(rId);
     try {
       await API.post("/stock/confirm", {
@@ -213,6 +224,7 @@ const Reservations = () => {
       setConfirmModal({ open: false, reservation: null, orderId: "" });
       fetchReservations();
     } catch (err) {
+      setReservations(previous);
       toast.error(err.response?.data?.message || "Failed to confirm reservation");
     } finally {
       setActionLoadingId(null);
@@ -227,22 +239,35 @@ const Reservations = () => {
     ) {
       return;
     }
+
+    const previous = reservations;
+    setReservations((prev) =>
+      prev.map((item) =>
+        item.reservationId === r.reservationId ? { ...item, status: "released" } : item
+      )
+    );
+
     setActionLoadingId(r.reservationId);
     try {
       await API.post("/stock/release", { reservationId: r.reservationId });
       toast.success(`Hold ${r.reservationId} released. Stock returned.`);
       fetchReservations();
     } catch (err) {
+      setReservations(previous);
       toast.error(err.response?.data?.message || "Failed to release reservation");
     } finally {
       setActionLoadingId(null);
     }
   };
 
-  const filteredReservations = reservations.filter((r) => {
-    if (activeTab === "all") return true;
-    return r.status === activeTab;
-  });
+  const filteredReservations = useMemo(
+    () =>
+      reservations.filter((r) => {
+        if (activeTab === "all") return true;
+        return r.status === activeTab;
+      }),
+    [reservations, activeTab]
+  );
 
   const getCountdown = (expiresAt) => {
     if (!expiresAt) return null;
@@ -362,7 +387,7 @@ const Reservations = () => {
             onChange={(e) => setFilterWarehouse(e.target.value)}
           >
             <option value="">All Warehouses</option>
-            {warehouses.map((w) => (
+            {accessibleWarehouses.map((w) => (
               <option key={w._id} value={w._id}>
                 {w.name}
               </option>
@@ -583,7 +608,7 @@ const Reservations = () => {
                   required
                 >
                   <option value="">Select Warehouse</option>
-                  {warehouses.map((w) => (
+                  {accessibleWarehouses.map((w) => (
                     <option key={w._id} value={w._id}>
                       {w.name} {w.address ? `(${w.address})` : ""}
                     </option>
