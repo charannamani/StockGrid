@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo, memo } from "react";
+import { useState, useMemo, memo, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Boxes,
   AlertTriangle,
@@ -80,23 +81,66 @@ StockRow.displayName = "StockRow";
 
 const StockView = () => {
   const { user } = useAuth();
-  const [warehouses, setWarehouses] = useState([]);
+
+  const { data: warehouses = [], isLoading: loadingWarehouses } = useQuery({
+    queryKey: ["warehouses"],
+    queryFn: async () => {
+      const res = await API.get("/warehouses");
+      return res.data || [];
+    },
+  });
+
+  const { data: products = [] } = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const res = await API.get("/products");
+      return res.data || [];
+    },
+  });
+
   const accessibleWarehouses = useMemo(
     () => getAccessibleWarehouses(warehouses, user),
     [warehouses, user]
   );
-  const [products, setProducts] = useState([]);
+
   const [selectedWarehouse, setSelectedWarehouse] = useState("");
-  const [stock, setStock] = useState([]);
-  const [warehouseMeta, setWarehouseMeta] = useState({
-    totalOccupancy: 0,
-    capacity: null,
-    spaceLeft: null,
-    isOverCapacity: false,
+
+  // Initialize selected warehouse once accessible warehouses are available
+  useEffect(() => {
+    if (!selectedWarehouse && accessibleWarehouses.length > 0) {
+      setSelectedWarehouse(accessibleWarehouses[0]._id);
+    }
+  }, [accessibleWarehouses, selectedWarehouse]);
+
+  const { data: warehouseStockData, isLoading: loadingStock } = useQuery({
+    queryKey: ["stock", "warehouse", selectedWarehouse],
+    queryFn: async () => {
+      const res = await API.get(`/stock/warehouse/${selectedWarehouse}`);
+      return res.data;
+    },
+    enabled: !!selectedWarehouse,
   });
+
+  const stock = useMemo(() => warehouseStockData?.stock || [], [warehouseStockData]);
+
+  const warehouseMeta = useMemo(() => {
+    if (!warehouseStockData) {
+      return {
+        totalOccupancy: 0,
+        capacity: null,
+        spaceLeft: null,
+        isOverCapacity: false,
+      };
+    }
+    return {
+      totalOccupancy: warehouseStockData.totalOccupancy || 0,
+      capacity: warehouseStockData.capacity,
+      spaceLeft: warehouseStockData.spaceLeft,
+      isOverCapacity: warehouseStockData.isOverCapacity,
+    };
+  }, [warehouseStockData]);
+
   const [search, setSearch] = useState("");
-  const [loadingWarehouses, setLoadingWarehouses] = useState(true);
-  const [loadingStock, setLoadingStock] = useState(false);
 
   const [showRouter, setShowRouter] = useState(true);
   const [routeProduct, setRouteProduct] = useState("");
@@ -108,50 +152,6 @@ const StockView = () => {
   const [checkingRoute, setCheckingRoute] = useState(false);
   const [detectingGps, setDetectingGps] = useState(false);
   const [routeResult, setRouteResult] = useState(null);
-
-  useEffect(() => {
-    const initData = async () => {
-      try {
-        const [whRes, prodRes] = await Promise.all([
-          API.get("/warehouses"),
-          API.get("/products"),
-        ]);
-        const list = whRes.data || [];
-        setWarehouses(list);
-        setProducts(prodRes.data || []);
-        const accessible = getAccessibleWarehouses(list, user);
-        if (accessible.length > 0) setSelectedWarehouse(accessible[0]._id);
-      } catch (err) {
-        toast.error("Couldn't load network metadata");
-      } finally {
-        setLoadingWarehouses(false);
-      }
-    };
-    initData();
-  }, []);
-
-  useEffect(() => {
-    if (!selectedWarehouse) return;
-
-    const fetchStock = async () => {
-      setLoadingStock(true);
-      try {
-        const res = await API.get(`/stock/warehouse/${selectedWarehouse}`);
-        setStock(res.data.stock || []);
-        setWarehouseMeta({
-          totalOccupancy: res.data.totalOccupancy || 0,
-          capacity: res.data.capacity,
-          spaceLeft: res.data.spaceLeft,
-          isOverCapacity: res.data.isOverCapacity,
-        });
-      } catch (err) {
-        toast.error("Couldn't load facility inventory");
-      } finally {
-        setLoadingStock(false);
-      }
-    };
-    fetchStock();
-  }, [selectedWarehouse]);
 
   const activeWarehouseObj = useMemo(
     () => warehouses.find((w) => w._id === selectedWarehouse),

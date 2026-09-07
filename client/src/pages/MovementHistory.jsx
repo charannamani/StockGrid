@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, memo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeftRight, Plus, X, AlertTriangle, CheckCircle2, Sparkles, RefreshCw } from "lucide-react";
 import API from "../utils/api";
 import { useAuth } from "../context/AuthContext";
@@ -82,9 +83,30 @@ const MovementHistory = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
 
+  const queryClient = useQueryClient();
+
   const [movements, setMovements] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [warehouses, setWarehouses] = useState([]);
+  const [filters, setFilters] = useState({ product: "", warehouse: "" });
+  const [showForm, setShowForm] = useState(false);
+  const [movementForm, setMovementForm] = useState(emptyMovementForm);
+  const [saving, setSaving] = useState(false);
+  const [warehouseCapacities, setWarehouseCapacities] = useState({});
+
+  const { data: products = [] } = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const res = await API.get("/products");
+      return res.data || [];
+    },
+  });
+
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ["warehouses"],
+    queryFn: async () => {
+      const res = await API.get("/warehouses");
+      return res.data || [];
+    },
+  });
 
   // Memoize accessibleWarehouses based on current user role and assignments
   const accessibleWarehouses = useMemo(
@@ -92,27 +114,24 @@ const MovementHistory = () => {
     [warehouses, user]
   );
 
-  const [filters, setFilters] = useState({ product: "", warehouse: "" });
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [movementForm, setMovementForm] = useState(emptyMovementForm);
-  const [saving, setSaving] = useState(false);
-  const [warehouseCapacities, setWarehouseCapacities] = useState({});
-
-  const fetchMovements = useCallback(async (activeFilters = filters) => {
-    try {
+  const { data: serverMovements = [], isLoading: loading } = useQuery({
+    queryKey: ["movements", filters],
+    queryFn: async () => {
       const params = {};
-      if (activeFilters.product) params.product = activeFilters.product;
-      if (activeFilters.warehouse) params.warehouse = activeFilters.warehouse;
+      if (filters.product) params.product = filters.product;
+      if (filters.warehouse) params.warehouse = filters.warehouse;
 
       const res = await API.get("/movements", { params });
-      setMovements(res.data.movements || []);
-    } catch (err) {
-      toast.error("Couldn't load movement history");
-    } finally {
-      setLoading(false);
+      return res.data.movements || [];
+    },
+  });
+
+  // Sync server movements to local state for optimistic UI updates
+  useEffect(() => {
+    if (serverMovements) {
+      setMovements(serverMovements);
     }
-  }, [filters]);
+  }, [serverMovements]);
 
   // Scope capacity fetching to accessibleWarehouses only
   const fetchCapacityMeta = useCallback(async (whList) => {
@@ -144,31 +163,22 @@ const MovementHistory = () => {
   }, []);
 
   useEffect(() => {
-    const fetchRefs = async () => {
-      try {
-        const [productsRes, warehousesRes] = await Promise.all([
-          API.get("/products"),
-          API.get("/warehouses"),
-        ]);
-        const whList = warehousesRes.data || [];
-        setProducts(productsRes.data || []);
-        setWarehouses(whList);
+    if (accessibleWarehouses && accessibleWarehouses.length > 0) {
+      fetchCapacityMeta(accessibleWarehouses);
+    }
+  }, [accessibleWarehouses, fetchCapacityMeta]);
 
-        // Scope capacity fetch strictly to accessible warehouses
-        const accessible = getAccessibleWarehouses(whList, user);
-        fetchCapacityMeta(accessible);
-      } catch (err) {
-        toast.error("Couldn't load products/warehouses");
-      }
-    };
-    fetchRefs();
-    fetchMovements();
-  }, [fetchMovements, fetchCapacityMeta, user]);
+  const createMovementMutation = useMutation({
+    mutationFn: (payload) => API.post("/movements", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["movements"] });
+      queryClient.invalidateQueries({ queryKey: ["stock"] });
+    },
+  });
 
   const applyFilters = useCallback((next) => {
     setFilters(next);
-    fetchMovements(next);
-  }, [fetchMovements]);
+  }, []);
 
   const openForm = useCallback(() => {
     setMovementForm(emptyMovementForm);
@@ -223,7 +233,7 @@ const MovementHistory = () => {
         ...(movementForm.type === "adjustment" ? { direction: movementForm.direction } : {}),
       };
 
-      const res = await API.post("/movements", payload);
+      const res = await createMovementMutation.mutateAsync(payload);
       toast.success("Movement recorded successfully");
 
       // Replace optimistic movement with confirmed record from backend

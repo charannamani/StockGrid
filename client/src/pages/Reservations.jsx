@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, memo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   BookmarkCheck,
   Plus,
@@ -205,25 +206,110 @@ ReservationRow.displayName = "ReservationRow";
 const Reservations = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const queryClient = useQueryClient();
 
-  const [reservations, setReservations] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("pending");
+  const [filterProduct, setFilterProduct] = useState("");
+  const [filterWarehouse, setFilterWarehouse] = useState("");
 
-  const [products, setProducts] = useState([]);
-  const [warehouses, setWarehouses] = useState([]);
+  // 1. Fetch products with React Query
+  const { data: products = [] } = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const res = await API.get("/products");
+      return res.data || [];
+    },
+  });
+
+  // 2. Fetch warehouses with React Query
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ["warehouses"],
+    queryFn: async () => {
+      const res = await API.get("/warehouses");
+      return res.data || [];
+    },
+  });
+
   const accessibleWarehouses = useMemo(
     () => getAccessibleWarehouses(warehouses, user),
     [warehouses, user]
   );
-  const [stockMap, setStockMap] = useState({});
 
-  const [filterProduct, setFilterProduct] = useState("");
-  const [filterWarehouse, setFilterWarehouse] = useState("");
+  // 3. Fetch reservations with React Query
+  const {
+    data: serverReservations = [],
+    isLoading: loading,
+    refetch: refetchReservations,
+  } = useQuery({
+    queryKey: ["reservations", { product: filterProduct, warehouse: filterWarehouse }],
+    queryFn: async () => {
+      const params = {};
+      if (filterProduct) params.product = filterProduct;
+      if (filterWarehouse) params.warehouse = filterWarehouse;
+      const res = await API.get("/stock/reservations", { params });
+      return res.data?.reservations || [];
+    },
+  });
+
+  // Local state initialized and synced from query data for optimistic updates
+  const [reservations, setReservations] = useState([]);
+  useEffect(() => {
+    setReservations(serverReservations);
+  }, [serverReservations]);
 
   const [showReserveModal, setShowReserveModal] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
+
+  // 4. Fetch warehouse stock with React Query
+  const { data: warehouseStockData } = useQuery({
+    queryKey: ["stock", "warehouse", form.warehouseId],
+    queryFn: async () => {
+      if (!form.warehouseId) return null;
+      const res = await API.get(`/stock/warehouse/${form.warehouseId}`);
+      return Array.isArray(res.data) ? res.data : res.data.stock || [];
+    },
+    enabled: !!form.warehouseId,
+  });
+
+  const stockMap = useMemo(() => {
+    if (!warehouseStockData) return {};
+    const map = {};
+    warehouseStockData.forEach((item) => {
+      const pId = item.product?._id || item.product;
+      map[pId] = {
+        currentQuantity: item.currentQuantity || 0,
+        reservedQuantity: item.reservedQuantity || 0,
+        available: (item.currentQuantity || 0) - (item.reservedQuantity || 0),
+      };
+    });
+    return map;
+  }, [warehouseStockData]);
+
+  // Mutations with automatic cache invalidation
+  const createReservationMutation = useMutation({
+    mutationFn: (payload) => API.post("/stock/reserve", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reservations"] });
+      queryClient.invalidateQueries({ queryKey: ["stock"] });
+    },
+  });
+
+  const confirmReservationMutation = useMutation({
+    mutationFn: (payload) => API.post("/stock/confirm", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reservations"] });
+      queryClient.invalidateQueries({ queryKey: ["stock"] });
+    },
+  });
+
+  const releaseReservationMutation = useMutation({
+    mutationFn: (payload) => API.post("/stock/release", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reservations"] });
+      queryClient.invalidateQueries({ queryKey: ["stock"] });
+    },
+  });
 
   const [confirmModal, setConfirmModal] = useState({
     open: false,
@@ -253,70 +339,6 @@ const Reservations = () => {
     [isAdmin, user]
   );
 
-  const fetchReservations = useCallback(async () => {
-    try {
-      setLoading(true);
-      const params = {};
-      if (filterProduct) params.product = filterProduct;
-      if (filterWarehouse) params.warehouse = filterWarehouse;
-      const res = await API.get("/stock/reservations", { params });
-      setReservations(res.data?.reservations || []);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to load reservations");
-    } finally {
-      setLoading(false);
-    }
-  }, [filterProduct, filterWarehouse]);
-
-  const fetchRefs = useCallback(async () => {
-    try {
-      const [prodRes, whRes] = await Promise.all([
-        API.get("/products"),
-        API.get("/warehouses"),
-      ]);
-      setProducts(prodRes.data || []);
-      setWarehouses(whRes.data || []);
-    } catch (err) {
-      console.error(err);
-    }
-  }, []);
-
-  const fetchWarehouseStock = useCallback(async (whId) => {
-    if (!whId) return;
-    try {
-      const res = await API.get(`/stock/warehouse/${whId}`);
-      const stockList = Array.isArray(res.data) ? res.data : res.data.stock || [];
-      const map = {};
-      stockList.forEach((item) => {
-        const pId = item.product?._id || item.product;
-        map[pId] = {
-          currentQuantity: item.currentQuantity || 0,
-          reservedQuantity: item.reservedQuantity || 0,
-          available: (item.currentQuantity || 0) - (item.reservedQuantity || 0),
-        };
-      });
-      setStockMap(map);
-    } catch (err) {
-      console.error(err);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchRefs();
-  }, [fetchRefs]);
-
-  useEffect(() => {
-    fetchReservations();
-  }, [fetchReservations]);
-
-  useEffect(() => {
-    if (form.warehouseId) {
-      fetchWarehouseStock(form.warehouseId);
-    } else {
-      setStockMap({});
-    }
-  }, [form.warehouseId, fetchWarehouseStock]);
-
   const handleCopy = useCallback((id) => {
     navigator.clipboard.writeText(id);
     setCopiedId(id);
@@ -340,14 +362,12 @@ const Reservations = () => {
         quantity: qty,
         clientReference: form.clientReference.trim() || undefined,
       };
-      const res = await API.post("/stock/reserve", payload);
+      const res = await createReservationMutation.mutateAsync(payload);
       toast.success(
         `Reservation ${res.data.reservationId} confirmed! 10-minute hold active.`
       );
       setShowReserveModal(false);
       setForm(emptyForm);
-      fetchReservations();
-      if (form.warehouseId) fetchWarehouseStock(form.warehouseId);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to create reservation");
     } finally {
@@ -376,12 +396,11 @@ const Reservations = () => {
     setActionLoadingId(rId);
 
     try {
-      await API.post("/stock/confirm", {
+      await confirmReservationMutation.mutateAsync({
         reservationId: rId,
         orderId: confirmModal.orderId.trim() || undefined,
       });
       toast.success(`Hold ${rId} confirmed & stock permanently deducted!`);
-      fetchReservations();
     } catch (err) {
       // Revert optimistic update on failure
       setReservations(previous);
@@ -389,7 +408,7 @@ const Reservations = () => {
     } finally {
       setActionLoadingId(null);
     }
-  }, [confirmModal, reservations, fetchReservations]);
+  }, [confirmModal, reservations, confirmReservationMutation]);
 
   const handleReleaseReservation = useCallback(async (r) => {
     if (
@@ -410,9 +429,8 @@ const Reservations = () => {
 
     setActionLoadingId(r.reservationId);
     try {
-      await API.post("/stock/release", { reservationId: r.reservationId });
+      await releaseReservationMutation.mutateAsync({ reservationId: r.reservationId });
       toast.success(`Hold ${r.reservationId} released. Stock returned.`);
-      fetchReservations();
     } catch (err) {
       // Revert optimistic update on failure
       setReservations(previous);
@@ -420,7 +438,7 @@ const Reservations = () => {
     } finally {
       setActionLoadingId(null);
     }
-  }, [reservations, fetchReservations]);
+  }, [reservations, releaseReservationMutation]);
 
   const filteredReservations = useMemo(
     () =>
@@ -468,7 +486,7 @@ const Reservations = () => {
           </p>
         </div>
         <div style={styles.headerRight}>
-          <button style={styles.secondaryBtn} onClick={fetchReservations}>
+          <button style={styles.secondaryBtn} onClick={() => refetchReservations()}>
             <RefreshCw size={15} />
             <span>Refresh</span>
           </button>

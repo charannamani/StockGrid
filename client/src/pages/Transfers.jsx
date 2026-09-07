@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, memo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Truck,
   Plus,
@@ -183,17 +184,47 @@ TransferCard.displayName = "TransferCard";
 const Transfers = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const queryClient = useQueryClient();
 
-  const [transfers, setTransfers] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("in_transit");
 
-  const [products, setProducts] = useState([]);
-  const [warehouses, setWarehouses] = useState([]);
+  // 1. Fetch products with React Query
+  const { data: products = [] } = useQuery({
+    queryKey: ["products"],
+    queryFn: async () => {
+      const res = await API.get("/products");
+      return res.data || [];
+    },
+  });
+
+  // 2. Fetch warehouses with React Query
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ["warehouses"],
+    queryFn: async () => {
+      const res = await API.get("/warehouses");
+      return res.data || [];
+    },
+  });
+
   const accessibleWarehouses = useMemo(
     () => getAccessibleWarehouses(warehouses, user),
     [warehouses, user]
   );
+
+  // 3. Fetch transfers with React Query
+  const { data: serverTransfers = [], isLoading: loading } = useQuery({
+    queryKey: ["transfers"],
+    queryFn: async () => {
+      const res = await API.get("/transfers");
+      return res.data?.transfers || [];
+    },
+  });
+
+  // Local state synced from query data for optimistic updates
+  const [transfers, setTransfers] = useState([]);
+  useEffect(() => {
+    setTransfers(serverTransfers);
+  }, [serverTransfers]);
 
   const [showInitiateModal, setShowInitiateModal] = useState(false);
   const [initiateForm, setInitiateForm] = useState(emptyForm);
@@ -205,60 +236,57 @@ const Transfers = () => {
     notes: "",
   });
   const [actionLoadingId, setActionLoadingId] = useState(null);
-  const [sourceStockMap, setSourceStockMap] = useState({});
 
-  useEffect(() => {
-    if (initiateForm.fromWarehouse) {
-      API.get(`/stock/warehouse/${initiateForm.fromWarehouse}`)
-        .then((res) => {
-          const list = Array.isArray(res.data) ? res.data : res.data.stock || [];
-          const map = {};
-          list.forEach((item) => {
-            const pId = item.product?._id || item.product;
-            map[pId] = item.currentQuantity || 0;
-          });
-          setSourceStockMap(map);
-        })
-        .catch((err) => console.error(err));
-    } else {
-      setSourceStockMap({});
-    }
-  }, [initiateForm.fromWarehouse]);
+  // 4. Fetch source warehouse stock with React Query
+  const { data: sourceStockList = [] } = useQuery({
+    queryKey: ["stock", "warehouse", initiateForm.fromWarehouse],
+    queryFn: async () => {
+      if (!initiateForm.fromWarehouse) return [];
+      const res = await API.get(`/stock/warehouse/${initiateForm.fromWarehouse}`);
+      return Array.isArray(res.data) ? res.data : res.data.stock || [];
+    },
+    enabled: !!initiateForm.fromWarehouse,
+  });
+
+  const sourceStockMap = useMemo(() => {
+    if (!sourceStockList || sourceStockList.length === 0) return {};
+    const map = {};
+    sourceStockList.forEach((item) => {
+      const pId = item.product?._id || item.product;
+      map[pId] = item.currentQuantity || 0;
+    });
+    return map;
+  }, [sourceStockList]);
 
   const availableAtSource =
     initiateForm.product && initiateForm.fromWarehouse
       ? sourceStockMap[initiateForm.product] ?? 0
       : null;
 
-  const fetchTransfers = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await API.get("/transfers");
-      setTransfers(res.data?.transfers || []);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to load transfers");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  // Mutations with automatic cache invalidation
+  const initiateTransferMutation = useMutation({
+    mutationFn: (payload) => API.post("/transfers", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["stock"] });
+    },
+  });
 
-  const fetchRefs = useCallback(async () => {
-    try {
-      const [prodRes, whRes] = await Promise.all([
-        API.get("/products"),
-        API.get("/warehouses"),
-      ]);
-      setProducts(prodRes.data || []);
-      setWarehouses(whRes.data || []);
-    } catch (err) {
-      console.error(err);
-    }
-  }, []);
+  const confirmTransferMutation = useMutation({
+    mutationFn: (id) => API.post(`/transfers/${id}/confirm`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["stock"] });
+    },
+  });
 
-  useEffect(() => {
-    fetchTransfers();
-    fetchRefs();
-  }, [fetchTransfers, fetchRefs]);
+  const cancelTransferMutation = useMutation({
+    mutationFn: ({ id, notes }) => API.post(`/transfers/${id}/cancel`, { notes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transfers"] });
+      queryClient.invalidateQueries({ queryKey: ["stock"] });
+    },
+  });
 
   const canActOnWarehouse = useCallback(
     (warehouse) => {
@@ -295,7 +323,7 @@ const Transfers = () => {
 
     setSubmitting(true);
     try {
-      await API.post("/transfers", {
+      await initiateTransferMutation.mutateAsync({
         product: initiateForm.product,
         fromWarehouse: initiateForm.fromWarehouse,
         toWarehouse: initiateForm.toWarehouse,
@@ -306,7 +334,6 @@ const Transfers = () => {
       toast.success("Transfer initiated successfully");
       setShowInitiateModal(false);
       setInitiateForm(emptyForm);
-      fetchTransfers();
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to initiate transfer");
     } finally {
@@ -331,9 +358,8 @@ const Transfers = () => {
 
       setActionLoadingId(transfer._id);
       try {
-        await API.post(`/transfers/${transfer._id}/confirm`);
+        await confirmTransferMutation.mutateAsync(transfer._id);
         toast.success("Transfer confirmed! Stock credited to destination.");
-        fetchTransfers();
       } catch (err) {
         // Revert on failure
         setTransfers(previousTransfers);
@@ -342,7 +368,7 @@ const Transfers = () => {
         setActionLoadingId(null);
       }
     },
-    [canActOnWarehouse, transfers, fetchTransfers]
+    [canActOnWarehouse, transfers, confirmTransferMutation]
   );
 
   const handleCancelSubmit = useCallback(
@@ -361,10 +387,9 @@ const Transfers = () => {
 
       setActionLoadingId(transfer._id);
       try {
-        await API.post(`/transfers/${transfer._id}/cancel`, { notes });
+        await cancelTransferMutation.mutateAsync({ id: transfer._id, notes });
         toast.success("Transfer cancelled. Stock restored to source warehouse.");
         setCancelModal({ open: false, transfer: null, notes: "" });
-        fetchTransfers();
       } catch (err) {
         // Revert on failure
         setTransfers(previousTransfers);
@@ -373,7 +398,7 @@ const Transfers = () => {
         setActionLoadingId(null);
       }
     },
-    [cancelModal, transfers, fetchTransfers]
+    [cancelModal, transfers, cancelTransferMutation]
   );
 
   const filteredTransfers = useMemo(

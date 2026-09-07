@@ -2,7 +2,7 @@
 
 **Build Engine**: Vite v8.2.1 + Rollup  
 **Environment**: Production (`npm run build`)  
-**Build Time**: 814 ms  
+**Build Time**: 689 ms  
 **Module Count**: 1,920 modules transformed  
 
 ---
@@ -12,10 +12,10 @@
 StockGrid implements modern dynamic code-splitting using `React.lazy` and `Suspense` across all operational and administrative route boundaries. This ensures the initial page load downloads only the shared core runtime (React 19, React Router v7, Lucide icons, and TanStack React Query), while deferring heavy feature components (Recharts, map routing, ledger tables, transfer flows) until navigated by the user.
 
 - **Initial Critical CSS**: 2.56 kB (`1.19 kB` gzipped)
-- **Initial Vendor/Runtime Bundle**: 332.27 kB (`108.43 kB` gzipped)
-- **Shared Virtualization Engine**: 1.74 kB (`0.89 kB` gzipped)
-- **Total Route Assets (Code-Split)**: 120.3 kB (`34.7 kB` total across 11 async routes)
-- **Average Route Chunk Size**: ~10.9 kB (~3.1 kB gzipped)
+- **Core Vendor & Icon Bundles**: 332.54 kB (`109.38 kB` gzipped across `index` and `createLucideIcon`)
+- **Shared Query & Virtualization Utilities**: 4.09 kB (`1.86 kB` gzipped across `VirtualTable` and `useMutation`)
+- **Total Route Assets (Code-Split)**: 128.8 kB (`37.9 kB` total across 11 async routes & shared scope)
+- **Average Route Chunk Size**: ~11.7 kB (~3.4 kB gzipped)
 
 ---
 
@@ -24,20 +24,22 @@ StockGrid implements modern dynamic code-splitting using `React.lazy` and `Suspe
 | Asset / Chunk | Type | Minified Size | Gzip Size | Description & Load Strategy |
 | :--- | :---: | :---: | :---: | :--- |
 | `index-Bp8vuF9n.css` | Stylesheet | **2.56 kB** | **1.19 kB** | Global styling, design system tokens, responsive grid & scroll utilities |
-| `index-zPFN92UL.js` | Core Vendor Bundle | **332.27 kB** | **108.43 kB** | React 19, React DOM, React Router v7, TanStack Query, Axios, Toaster |
-| `VirtualTable-DUb1ocdB.js` | Shared Component | **1.74 kB** | **0.89 kB** | Zero-dependency windowed virtualizer for high-cardinality data tables |
-| `warehouseScope-B1EACZly.js` | Shared Utility | **0.40 kB** | **0.31 kB** | RBAC warehouse accessibility evaluator |
-| `Login-B45uwHAv.js` | Route Chunk | **3.39 kB** | **1.35 kB** | Authentication login screen (lazy loaded) |
-| `Register-BZC84gYw.js` | Route Chunk | **3.45 kB** | **1.38 kB** | Account registration screen (lazy loaded) |
-| `Warehouses-BWpmeaef.js` | Route Chunk | **9.49 kB** | **3.05 kB** | Warehouse network cards & facility geolocation (lazy loaded) |
-| `ApiKeys-DuxpLmym.js` | Route Chunk | **11.54 kB** | **3.67 kB** | Admin API credentials & SHA-256 token generator (lazy loaded) |
-| `Products-Bpb9l3h_.js` | Route Chunk | **12.66 kB** | **3.86 kB** | Catalog management & reorder threshold controls (lazy loaded) |
-| `Dashboard-CLhK_AZC.js` | Route Chunk | **12.98 kB** | **3.86 kB** | Executive KPIs, capacity charts, and recent activity (lazy loaded) |
-| `UserManagement-CqKwDoAh.js` | Route Chunk | **13.46 kB** | **4.00 kB** | Admin RBAC role assignment & warehouse scoping (lazy loaded) |
-| `MovementHistory-OOncaMM8.js` | Route Chunk | **14.61 kB** | **4.69 kB** | Virtualized inventory movement ledger & optimistic recorder (lazy loaded) |
-| `Transfers-C_ZHDtta.js` | Route Chunk | **18.03 kB** | **5.02 kB** | Two-phase custody transfer cards & optimistic receiver (lazy loaded) |
-| `StockView-DROzxctn.js` | Route Chunk | **19.02 kB** | **5.55 kB** | Haversine proximity router simulator & virtualized stock list (lazy loaded) |
-| `Reservations-Btp0ZC5d.js` | Route Chunk | **22.36 kB** | **5.96 kB** | Active checkout holds, 10-minute live timers & optimistic confirm (lazy loaded) |
+| `index-BZ9D4fjP.js` | Core Vendor Bundle | **263.39 kB** | **83.48 kB** | React 19, React DOM, React Router v7, TanStack Query client, Axios, Toaster |
+| `createLucideIcon--aMvcP51.js` | Shared Icon Runtime | **69.15 kB** | **25.90 kB** | Shared Lucide icon rendering engine |
+| `useMutation-BfrX6vfd.js` | Shared Query Module | **2.34 kB** | **0.97 kB** | TanStack React Query mutation observer and controller |
+| `VirtualTable-ufNkUzRK.js` | Shared Component | **1.75 kB** | **0.89 kB** | Zero-dependency windowed virtualizer for high-cardinality data tables |
+| `warehouseScope-pbeX3ndI.js` | Shared Utility | **8.42 kB** | **3.16 kB** | RBAC warehouse accessibility evaluator |
+| `Login-CD2lRxnT.js` | Route Chunk | **3.43 kB** | **1.37 kB** | Authentication login screen (lazy loaded) |
+| `Register-Bwgt6utH.js` | Route Chunk | **3.50 kB** | **1.41 kB** | Account registration screen (lazy loaded) |
+| `Warehouses-gLt7rwHf.js` | Route Chunk | **9.54 kB** | **3.07 kB** | Warehouse network cards & facility geolocation (lazy loaded) |
+| `ApiKeys-BnDA86ZV.js` | Route Chunk | **11.58 kB** | **3.70 kB** | Admin API credentials & SHA-256 token generator (lazy loaded) |
+| `Products-DJ2_SEDp.js` | Route Chunk | **12.70 kB** | **3.87 kB** | Catalog management & reorder threshold controls (lazy loaded) |
+| `Dashboard-jf3e77EU.js` | Route Chunk | **13.03 kB** | **3.88 kB** | Executive KPIs, capacity charts, and recent activity (lazy loaded) |
+| `UserManagement-74dWQj3I.js` | Route Chunk | **13.51 kB** | **4.01 kB** | Admin RBAC role assignment & warehouse scoping (lazy loaded) |
+| `MovementHistory-Cg_Owys-.js` | Route Chunk | **14.80 kB** | **4.78 kB** | Virtualized inventory movement ledger & optimistic recorder (lazy loaded) |
+| `Transfers-DAo-_g1d.js` | Route Chunk | **18.53 kB** | **5.15 kB** | Two-phase custody transfer cards & optimistic receiver (lazy loaded) |
+| `StockView-CGARPnbI.js` | Route Chunk | **18.92 kB** | **5.53 kB** | Haversine proximity router simulator & virtualized stock list (lazy loaded) |
+| `Reservations-BtCqnxv_.js` | Route Chunk | **22.79 kB** | **6.05 kB** | Active checkout holds, 10-minute live timers & optimistic confirm (lazy loaded) |
 
 *Note: Minor shared icon chunks (`check`, `plus`, `x`, `clock`, `search`, etc.) range between 0.11 kB and 0.34 kB each.*
 
@@ -46,10 +48,7 @@ StockGrid implements modern dynamic code-splitting using `React.lazy` and `Suspe
 ## ⚡ Code-Splitting & Optimization Analysis
 
 ### 1. Route-Level Code Splitting (`React.lazy` + `Suspense`)
-By splitting routes into isolated dynamic chunks, a visitor arriving at the login page only downloads `332 kB` (uncompressed) / `108 kB` (compressed) instead of the entire monolithic ~470 kB application bundle. This improves:
-- **First Contentful Paint (FCP)**: Reduced by ~38%
-- **Time to Interactive (TTI)**: Reduced by ~42%
-- **Largest Contentful Paint (LCP)**: < 1.1s on standard 4G connections
+Route-level code splitting means the initial page load only downloads the shared vendor bundle and the first route's chunk — feature-heavy pages like Reservations and StockView are only downloaded when the user actually navigates to them. This significantly lowers the initial payload and avoids transferring unneeded JavaScript for routes the user has not yet visited.
 
 ### 2. High-Performance Table Virtualization (`VirtualTable`)
 The inventory ledger (`MovementHistory.jsx`) and physical stock list (`StockView.jsx`) render records via `VirtualTable`:
